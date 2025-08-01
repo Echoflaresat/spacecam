@@ -1,22 +1,30 @@
-package texture
+package tiff
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"io"
 )
 
 type TiffHeader struct {
 	ByteOrder       binary.ByteOrder
 	Width, Height   int
-	RowsPerStrip    int
-	StripOffsets    []int
-	StripByteCounts []int
-	BitsPerSample   []int
 	SamplesPerPixel int
+	BitsPerSample   []int
 	Photometric     int
 	Compression     int
 	PlanarConfig    int
+
+	// Strip layout
+	RowsPerStrip    int
+	StripOffsets    []int
+	StripByteCounts []int
+
+	// Tile layout
+	TileWidth      int
+	TileHeight     int
+	TileOffsets    []int
+	TileByteCounts []int
 }
 
 // https://www.loc.gov/preservation/digital/formats/content/tiff_tags.shtml
@@ -31,9 +39,15 @@ const (
 	TagStripByteCounts           = 279
 	TagRowsPerStrip              = 278
 	TagPlanarConfiguration       = 284
+	TagTileWidth                 = 322
+	TagTileLength                = 323
+	TagTileOffsets               = 324
+	TagTileByteCounts            = 325
 )
 
-func ParseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
+var ErrInvalidTiffHeader = errors.New("invalid TIFF header")
+
+func parseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
 	read := func(offset int64, size int) ([]byte, error) {
 		buf := make([]byte, size)
 		_, err := reader.ReadAt(buf, offset)
@@ -53,10 +67,10 @@ func ParseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
 	case "MM":
 		bo = binary.BigEndian
 	default:
-		return TiffHeader{}, fmt.Errorf("invalid byte order")
+		return TiffHeader{}, ErrInvalidTiffHeader
 	}
 	if bo.Uint16(header[2:4]) != 42 {
-		return TiffHeader{}, fmt.Errorf("invalid TIFF magic number")
+		return TiffHeader{}, ErrInvalidTiffHeader
 	}
 	ifdOffset := int64(bo.Uint32(header[4:8]))
 
@@ -146,27 +160,21 @@ func ParseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
 			}
 		case TagPlanarConfiguration:
 			hdr.PlanarConfig = int(bo.Uint16(entry[8:10]))
+		case TagTileWidth:
+			hdr.TileWidth = int(valOffset)
+		case TagTileLength:
+			hdr.TileHeight = int(valOffset)
+		case TagTileOffsets:
+			hdr.TileOffsets, err = readLongArray()
+			if err != nil {
+				return TiffHeader{}, err
+			}
+		case TagTileByteCounts:
+			hdr.TileByteCounts, err = readLongArray()
+			if err != nil {
+				return TiffHeader{}, err
+			}
 		}
-	}
-
-	// Validate
-	if hdr.Width <= 0 || hdr.Height <= 0 {
-		return TiffHeader{}, fmt.Errorf("invalid dimensions")
-	}
-	if hdr.Compression != 1 {
-		return TiffHeader{}, fmt.Errorf("unsupported compression: %d", hdr.Compression)
-	}
-	if hdr.Photometric != 2 {
-		return TiffHeader{}, fmt.Errorf("expected RGB photometric interpretation, got %d", hdr.Photometric)
-	}
-	if hdr.SamplesPerPixel != 3 {
-		return TiffHeader{}, fmt.Errorf("expected 3 samples/pixel, got %d", hdr.SamplesPerPixel)
-	}
-	if len(hdr.BitsPerSample) != 3 || hdr.BitsPerSample[0] != 8 {
-		return TiffHeader{}, fmt.Errorf("expected BitsPerSample = [8,8,8], got %v", hdr.BitsPerSample)
-	}
-	if len(hdr.StripOffsets) == 0 || len(hdr.StripOffsets) != len(hdr.StripByteCounts) {
-		return TiffHeader{}, fmt.Errorf("invalid strip offset/length")
 	}
 
 	return hdr, nil

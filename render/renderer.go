@@ -14,6 +14,9 @@ type Theme struct {
 	SkyRim base.Color4
 	DayRim base.Color4
 	Warm   base.Color4
+	Day    string
+	Night  string
+	Clouds string
 }
 
 // Smoothstep performs a Hermite interpolation between 0 and 1 across [edge0, edge1].
@@ -281,23 +284,22 @@ func RenderScene(
 ) (*image.NRGBA, error) {
 
 	println("loading")
-	texDay, err := texture.Load("assets/earth_day.tif")
+	texDay, err := texture.Load(theme.Day)
 	if err != nil {
 		return nil, err
 	}
-	texNight, err := texture.Load("assets/earth_night.tif")
+	texNight, err := texture.Load(theme.Night)
 	if err != nil {
 		return nil, err
 	}
 	// Using day for clouds here, like your Python stub.
-	texClouds, err := texture.Load("assets/earth_clouds.tif")
+	texClouds, err := texture.Load(theme.Clouds)
 	if err != nil {
 		return nil, err
 	}
 
 	origin := camera.Position
-	altitudeKm := origin.Normalize().Scale(origin.Norm()).Norm() // same as origin.Norm()
-	altitudeKm = origin.Norm() - earth.Radius
+	altitudeKm := origin.Norm() - earth.Radius
 
 	ctx := NewRayContext(
 		origin,

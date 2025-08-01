@@ -12,12 +12,27 @@ func NewColor(r, g, b, a float64) Color4 {
 	return Color4{R: r, G: g, B: b, A: a}
 }
 
+func Color4FromStandardColor(c color.Color) Color4 {
+	r16, g16, b16, a16 := c.RGBA()
+	if a16 == 0 {
+		return Color4{R: 0, G: 0, B: 0, A: 0}
+	}
+	// De-premultiply and normalize to [0, 1]
+	invA := float64(0xFFFF) / float64(a16)
+	return Color4{
+		R: float64(r16) * invA / 65535.0,
+		G: float64(g16) * invA / 65535.0,
+		B: float64(b16) * invA / 65535.0,
+		A: float64(a16) / 65535.0,
+	}
+}
+
 func White() Color4 {
 	return Color4{R: 1, G: 1, B: 1, A: 1}
 }
 
 func Black() Color4 {
-	return Color4{R: 1, G: 1, B: 1, A: 1}
+	return Color4{R: 0, G: 0, B: 0, A: 1}
 }
 
 // Add returns c + o (component-wise).

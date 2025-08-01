@@ -1,36 +1,68 @@
 package texture
 
 import (
-	"io"
+	"errors"
+	"image"
+	"log/slog"
 	"math"
+	"os"
 
 	"github.com/echoflaresat/spacecam/base"
-	"golang.org/x/exp/mmap"
+	"github.com/echoflaresat/spacecam/texture/tiff"
+
+	_ "image/jpeg" // register JPEG format with image.Decode
+	_ "image/png"  // register PNG format with image.Decode
 )
 
 // Texture represents an RGB image with sampling by ECEF position vectors.
 type Texture struct {
-	TiffHeader
-	Data io.ReaderAt
+	Width  int
+	Height int
+	img    image.Image
 }
 
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
 func Load(path string) (Texture, error) {
-	reader, err := mmap.Open(path)
-	if err != nil {
-		return Texture{}, err
-	}
-
-	header, err := ParseTiffHeader(reader)
+	img, err := loadImage(path)
 	if err != nil {
 		return Texture{}, err
 	}
 
 	return Texture{
-		TiffHeader: header,
-		Data:       reader,
+		Width:  img.Bounds().Max.X,
+		Height: img.Bounds().Max.Y,
+		img:    img,
 	}, nil
+}
+
+func loadImage(path string) (image.Image, error) {
+	img, err := tiff.LoadStripedTiff(path)
+	if err == nil {
+		return img, nil
+	}
+	if !errors.Is(err, tiff.ErrInvalidTiffHeader) {
+		slog.Warn("failed to load striped TIFF", "path", path, "error", err)
+	}
+
+	img, err = tiff.LoadTiledTiff(path)
+	if err == nil {
+		return img, nil
+	}
+	if !errors.Is(err, tiff.ErrInvalidTiffHeader) {
+		slog.Warn("failed to load tiled TIFF", "path", path, "error", err)
+	}
+
+	// fallback to image codecs
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	img, _, err = image.Decode(f)
+	return img, err
+
 }
 
 // Sample maps the 3D vector P (ECEF) to texture coordinates and returns a base.Color4.
@@ -65,19 +97,6 @@ func (t Texture) Sample(P base.Vec3) base.Color4 {
 		y = t.Height - 1
 	}
 
-	strip := y / t.RowsPerStrip
-	localY := y % t.RowsPerStrip
-	idx := t.StripOffsets[strip] + (localY*t.Width+x)*3
-	buf := make([]byte, 3)
-
-	_, err := t.Data.ReadAt(buf, int64(idx))
-	if err != nil {
-		return base.Black() // fallback on out-of-bounds
-	}
-
-	r := float64(buf[0]) / 255.0
-	g := float64(buf[1]) / 255.0
-	b := float64(buf[2]) / 255.0
-
-	return base.Color4{R: r, G: g, B: b, A: 1.0}
+	c := t.img.At(x, y)
+	return base.Color4FromStandardColor(c)
 }

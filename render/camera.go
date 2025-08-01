@@ -36,10 +36,10 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
 
 	// Basis vectors
 	fwd := pos.Normalize().Scale(-1.0) // look toward Earth center
-	globalUp := base.Vec3{0, 0, 1}
+	globalUp := base.Vec3{X: 0, Y: 0, Z: 1}
 	right := fwd.Cross(globalUp)
 	if right.Norm() < 1e-6 {
-		right = base.Vec3{1, 0, 0} // fallback if near poles / parallel
+		right = base.Vec3{X: 1, Y: 0, Z: 0} // fallback if near poles / parallel
 	}
 	right = right.Normalize()
 	up := right.Cross(fwd).Normalize()

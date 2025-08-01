@@ -1,0 +1,1 @@
+convert earth_clouds.jpg -define tiff:tile-geometry=256x256 -compress zip -define tiff:predictor=none earth_clouds_scaled.tif

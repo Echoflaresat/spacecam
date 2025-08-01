@@ -14,12 +14,12 @@ import (
 
 func main() {
 
-	latDeg, lonDeg, altitudeKm := 47.0, 19.0, 8878.0
+	latDeg, lonDeg, altitudeKm := 47.0, 19.0, 10878.0
 	fovDeg := 60.0
 	tiltDeg := 0.0
 
-	outputSize := 4096
-	supersampling := 3
+	outputSize := 1024
+	supersampling := 2
 	sunDir := earth.SunDirectionECEF(time.Now())
 
 	camera := render.NewCamera(latDeg, lonDeg, altitudeKm, fovDeg, tiltDeg)
@@ -32,6 +32,9 @@ func main() {
 			SkyRim: base.NewColor(0.3, 0.55, 1.0, 1.0),
 			DayRim: base.NewColor(0.3, 0.55, 1.0, 0.5),
 			Warm:   base.NewColor(1.02, 1.0, 0.98, 1.0),
+			Day:    "assets/earth_day_scaled.jpg",
+			Night:  "assets/earth_night_scaled.jpg",
+			Clouds: "assets/earth_clouds_scaled.jpg",
 		},
 	)
 
