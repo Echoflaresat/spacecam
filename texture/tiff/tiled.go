@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 
+	"github.com/echoflaresat/spacecam/colors"
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/exp/mmap"
 )
@@ -94,15 +95,15 @@ func (t *tiledTiff) At(x, y int) color.Color {
 
 	switch h.Photometric {
 	case 2: // RGB
-		return color.RGBA{
-			R: tile[pixOffset],
-			G: tile[pixOffset+1],
-			B: tile[pixOffset+2],
-			A: 255,
-		}
+		return colors.New(
+			float64(tile[pixOffset])/255.0,
+			float64(tile[pixOffset+1])/255.0,
+			float64(tile[pixOffset+2])/255.0,
+			1.0,
+		)
 	case 1: // BlackIsZero grayscale
-		v := tile[pixOffset]
-		return color.RGBA{R: v, G: v, B: v, A: 255}
+		v := float64(tile[pixOffset]) / 255.0
+		return colors.New(v, v, v, 1.0)
 	default:
 		panic(fmt.Sprintf("unsupported PhotometricInterpretation: %d", h.Photometric))
 	}

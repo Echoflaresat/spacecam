@@ -5,15 +5,16 @@ import (
 	"image"
 	"math"
 
-	"github.com/echoflaresat/spacecam/base"
+	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
 	"github.com/echoflaresat/spacecam/texture"
+	"github.com/echoflaresat/spacecam/vectors"
 )
 
 type Theme struct {
-	SkyRim base.Color4
-	DayRim base.Color4
-	Warm   base.Color4
+	SkyRim colors.Color4
+	DayRim colors.Color4
+	Warm   colors.Color4
 	Day    string
 	Night  string
 	Clouds string
@@ -50,44 +51,13 @@ func Clip(x, min, max float64) float64 {
 	return x
 }
 
-// IntersectEarth calculates the intersection of a ray (O + t*D) with a sphere of radius rEarth.
-// Returns the closest positive t, or -1.0 if there is no intersection.
-func IntersectEarth(O, D base.Vec3, rEarth float64) float64 {
-	OdotD := O.Dot(D)
-	b := 2.0 * OdotD
-	c := O.Dot(O) - rEarth*rEarth
-
-	discriminant := b*b - 4.0*c
-	if discriminant < 0.0 {
-		return -1.0
-	}
-
-	sqrtDisc := math.Sqrt(discriminant)
-	t1 := (-b - sqrtDisc) / 2.0
-	t2 := (-b + sqrtDisc) / 2.0
-
-	if t1 > 0.0 && t2 > 0.0 {
-		if t1 < t2 {
-			return t1
-		}
-		return t2
-	}
-	if t1 > 0.0 {
-		return t1
-	}
-	if t2 > 0.0 {
-		return t2
-	}
-	return -1.0
-}
-
 // RenderSkyRimGlow renders a faint atmospheric halo when a ray misses Earth
 // but grazes the atmosphere. Returns a linear RGBA color in [0,1].
-func RenderSkyRimGlow(ctx *RayContext) base.Color4 {
+func RenderSkyRimGlow(ctx *RayContext) colors.Color4 {
 	// Fade in as the ray’s closest approach nears the Earth’s radius (plus ~200 km margin).
 	edgeFade := Smoothstep(earth.Radius+200.0, earth.Radius, ctx.DistToCenter)
 	if edgeFade <= 0 {
-		return base.Color4{}
+		return colors.Color4{}
 	}
 
 	// Day-side glow ramps with rim alignment to the sun.
@@ -105,16 +75,16 @@ func RenderSkyRimGlow(ctx *RayContext) base.Color4 {
 
 // BlendNightDayEnergyConserving blends day and night colors using an
 // energy-conserving root-sum-square method to ensure a smooth transition.
-func BlendNightDayEnergyConserving(CDay, CNight base.Color4, light float64) base.Color4 {
+func BlendNightDayEnergyConserving(CDay, CNight colors.Color4, light float64) colors.Color4 {
 	r := math.Sqrt((1-light)*CNight.R*CNight.R + light*CDay.R*CDay.R)
 	g := math.Sqrt((1-light)*CNight.G*CNight.G + light*CDay.G*CDay.G)
 	b := math.Sqrt((1-light)*CNight.B*CNight.B + light*CDay.B*CDay.B)
-	return base.Color4{R: r, G: g, B: b, A: 1.0}
+	return colors.Color4{R: r, G: g, B: b, A: 1.0}
 }
 
 // RenderEarthSurface renders the visible surface color at the intersection point.
 // It blends day/night textures, clouds, specular, glow, and rim lighting.
-func RenderEarthSurface(ctx *RayContext, CDay, CNight, CClouds base.Color4) base.Color4 {
+func RenderEarthSurface(ctx *RayContext, CDay, CNight, CClouds colors.Color4) colors.Color4 {
 	// Compute how much sunlight is hitting the surface (soft transition)
 	light := Smoothstep(-0.1, 0.1, ctx.SunLightIntensity)
 
@@ -138,7 +108,7 @@ func RenderEarthSurface(ctx *RayContext, CDay, CNight, CClouds base.Color4) base
 
 // BlendClouds overlays cloud RGB texture onto the base surface color using inferred alpha.
 // 'light' is the sunlight factor (0..1), 'boost' increases cloud visibility.
-func BlendClouds(C, CCloud base.Color4, light, boost float64) base.Color4 {
+func BlendClouds(C, CCloud colors.Color4, light, boost float64) colors.Color4 {
 	brightness := (CCloud.R + CCloud.G + CCloud.B) / 3.0
 	cloudAlpha := brightness * light * boost
 
@@ -147,18 +117,18 @@ func BlendClouds(C, CCloud base.Color4, light, boost float64) base.Color4 {
 	b := C.B + (1.0-C.B)*CCloud.B*cloudAlpha
 	a := C.A // preserve base alpha
 
-	return base.Color4{R: r, G: g, B: b, A: a}
+	return colors.Color4{R: r, G: g, B: b, A: a}
 }
 
 // IsOcean returns true if the color is likely an ocean pixel,
 // determined by whether blue is dominant relative to red and green.
-func IsOcean(color base.Color4, blueThreshold float64) bool {
+func IsOcean(color colors.Color4, blueThreshold float64) bool {
 	return (color.B > color.R*blueThreshold) && (color.B > color.G*blueThreshold)
 }
 
 // ApplySpecularHighlight adds a sun glint via a Blinn-Phong–style specular model.
 // Returns the adjusted RGB color (alpha unchanged).
-func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday base.Color4) base.Color4 {
+func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Color4 {
 	// Only apply on ocean-like pixels.
 	if !IsOcean(Cday, 1.05) {
 		return Crgb
@@ -185,14 +155,14 @@ func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday base.Color4) base.Color4
 
 	strength := specular * oceanReflectivity * 0.8
 	if strength > 0 {
-		return Crgb.Add(base.White().Scale(strength))
+		return Crgb.Add(colors.White().Scale(strength))
 	}
 	return Crgb
 }
 
 // ApplyGlow adds a soft atmospheric glow near the grazing angles.
 // - light is typically Smoothstep(-0.1, 0.1, ctx.SunLightIntensity).
-func ApplyGlow(ctx *RayContext, CBlended base.Color4, light float64) base.Color4 {
+func ApplyGlow(ctx *RayContext, CBlended colors.Color4, light float64) colors.Color4 {
 	// Grazing factor ~ how much the ray grazes the surface (clamped 0..1).
 	grazing := 1.0 - (ctx.T / (ctx.AltitudeKm + earth.Radius))
 	grazing = Clip(grazing, 0.0, 1.0)
@@ -213,7 +183,7 @@ func ApplyGlow(ctx *RayContext, CBlended base.Color4, light float64) base.Color4
 	b := CBlended.B*(1.0-glow) + ctx.theme.SkyRim.B*blueFactor*glow
 	a := CBlended.A*(1.0-glow) + 0.5*blueFactor*glow
 
-	return base.Color4{R: r, G: g, B: b, A: a}
+	return colors.Color4{R: r, G: g, B: b, A: a}
 }
 
 // GaussianFade returns a smooth Gaussian falloff centered at `center`
@@ -237,7 +207,7 @@ func GaussianFadeDefault(x float64) float64 {
 //	shadow_fade = smoothstep(-0.7, -0.3, ctx.sun_light_intensity)
 //	total_glow = edge_alpha*(0.3*light_fade) + edge_alpha*(0.15*shadow_fade)
 //	if total_glow > 0: C + COLOR_DAY_RIM_GLOW*total_glow
-func ApplyDayRimGlow(ctx *RayContext, CBlended base.Color4) base.Color4 {
+func ApplyDayRimGlow(ctx *RayContext, CBlended colors.Color4) colors.Color4 {
 	edgeAlpha := GaussianFade(ctx.ViewDotNormal, 0.0, 0.50) // fades at limb
 
 	// Day-side glow
@@ -277,7 +247,7 @@ func GenerateSupersamplingOffsets(n int) [][2]float64 {
 // builds a RayContext, and raytraces the frame.
 func RenderScene(
 	camera Camera,
-	sunDir base.Vec3,
+	sunDir vectors.Vec3,
 	outSize int,
 	supersampling int,
 	theme Theme,
@@ -310,7 +280,7 @@ func RenderScene(
 
 	// Produce an RGB buffer (H*W*3)
 	println("raytracescenepixels")
-	img := RaytraceScenePixels(&ctx, camera, outSize, supersampling, texDay, texNight, texClouds)
+	img := RaytraceScenePixels(ctx, camera, outSize, supersampling, texDay, texNight, texClouds)
 	println("done")
 	return img, nil
 }
@@ -336,7 +306,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 		}
 
 		for x := 0; x < W; x++ {
-			colorAccum := base.Color4{}
+			colorAccum := colors.Color4{}
 
 			for _, off := range offsets {
 				dx, dy := off[0], off[1]
@@ -344,7 +314,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				rayDir := camera.ComputeRay(float64(x)+dx, float64(y)+dy, W, H)
 				ctx.SetRayDirection(rayDir)
 
-				var c base.Color4
+				var c colors.Color4
 				if ctx.T < 0 {
 					// misses Earth → sky rim glow
 					c = RenderSkyRimGlow(ctx)
@@ -365,7 +335,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 			colorOut = colorOut.Mul(ctx.theme.Warm)
 
 			// Composite over black
-			colorOut = colorOut.Scale(colorOut.A).Add(base.Black())
+			colorOut = colorOut.Scale(colorOut.A).Add(colors.Black())
 
 			img.SetNRGBA(x, y, colorOut.ToNRGBA())
 		}

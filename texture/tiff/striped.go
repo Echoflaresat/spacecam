@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"io"
 
+	"github.com/echoflaresat/spacecam/colors"
 	"golang.org/x/exp/mmap"
 )
 
@@ -77,7 +78,12 @@ func (t *stripedTiff) At(x, y int) color.Color {
 		if err != nil {
 			panic(fmt.Sprintf("could not read RGB pixel at (%d,%d): %v", x, y, err))
 		}
-		return color.RGBA{R: buf[0], G: buf[1], B: buf[2], A: 255}
+		return colors.New(
+			float64(buf[0])/255.0,
+			float64(buf[1])/255.0,
+			float64(buf[2])/255.0,
+			1.0,
+		)
 
 	case 1: // Grayscale (BlackIsZero)
 		var b [1]byte
@@ -85,9 +91,8 @@ func (t *stripedTiff) At(x, y int) color.Color {
 		if err != nil {
 			panic(fmt.Sprintf("could not read grayscale pixel at (%d,%d): %v", x, y, err))
 		}
-		v := b[0]
-		return color.RGBA{R: v, G: v, B: v, A: 255}
-
+		v := float64(b[0]) / 255.0
+		return colors.New(v, v, v, 1.0)
 	default:
 		panic(fmt.Sprintf("unsupported PhotometricInterpretation: %d", h.Photometric))
 	}

@@ -3,18 +3,18 @@ package render
 import (
 	"math"
 
-	"github.com/echoflaresat/spacecam/base"
 	"github.com/echoflaresat/spacecam/earth"
+	"github.com/echoflaresat/spacecam/vectors"
 )
 
 // Camera models a pinhole camera in ECEF coordinates.
 type Camera struct {
 	FOVDeg     float64
 	TanHalfFOV float64
-	Position   base.Vec3
-	Forward    base.Vec3
-	Right      base.Vec3
-	Up         base.Vec3
+	Position   vectors.Vec3
+	Forward    vectors.Vec3
+	Right      vectors.Vec3
+	Up         vectors.Vec3
 }
 
 // NewCamera constructs a camera from geodetic lat/lon (deg), altitude (km),
@@ -28,7 +28,7 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
 	y := camRadius * math.Cos(lat) * math.Sin(lon)
 	z := camRadius * math.Sin(lat)
 
-	pos := base.Vec3{X: x, Y: y, Z: z}
+	pos := vectors.Vec3{X: x, Y: y, Z: z}
 
 	// FOV
 	fovRad := fovDeg * math.Pi / 180.0
@@ -36,10 +36,10 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
 
 	// Basis vectors
 	fwd := pos.Normalize().Scale(-1.0) // look toward Earth center
-	globalUp := base.Vec3{X: 0, Y: 0, Z: 1}
+	globalUp := vectors.Vec3{X: 0, Y: 0, Z: 1}
 	right := fwd.Cross(globalUp)
 	if right.Norm() < 1e-6 {
-		right = base.Vec3{X: 1, Y: 0, Z: 0} // fallback if near poles / parallel
+		right = vectors.Vec3{X: 1, Y: 0, Z: 0} // fallback if near poles / parallel
 	}
 	right = right.Normalize()
 	up := right.Cross(fwd).Normalize()
@@ -59,7 +59,7 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
 }
 
 // rotateVec applies Rodrigues’ rotation formula: rotate v around axis by (cosT, sinT).
-func rotateVec(v, axis base.Vec3, cosT, sinT float64) base.Vec3 {
+func rotateVec(v, axis vectors.Vec3, cosT, sinT float64) vectors.Vec3 {
 	// v*cos + (axis x v)*sin + axis*(axis·v)*(1-cos)
 	return v.Scale(cosT).
 		Add(axis.Cross(v).Scale(sinT)).
@@ -67,7 +67,7 @@ func rotateVec(v, axis base.Vec3, cosT, sinT float64) base.Vec3 {
 }
 
 // tiltCamera rotates forward/up around the Right axis by tiltDeg.
-func tiltCamera(fwd, right, up base.Vec3, tiltDeg float64) (base.Vec3, base.Vec3, base.Vec3) {
+func tiltCamera(fwd, right, up vectors.Vec3, tiltDeg float64) (vectors.Vec3, vectors.Vec3, vectors.Vec3) {
 	theta := tiltDeg * math.Pi / 180.0
 	c, s := math.Cos(theta), math.Sin(theta)
 
@@ -78,7 +78,7 @@ func tiltCamera(fwd, right, up base.Vec3, tiltDeg float64) (base.Vec3, base.Vec3
 
 // ComputeRay returns the normalized viewing direction for pixel (i,j)
 // given the image dimensions (width,height). i,j can be fractional (for supersampling).
-func (c Camera) ComputeRay(i, j float64, width, height int) base.Vec3 {
+func (c Camera) ComputeRay(i, j float64, width, height int) vectors.Vec3 {
 	w := float64(width)
 	h := float64(height)
 

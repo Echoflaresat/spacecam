@@ -1,29 +1,67 @@
-package base
+package colors
 
 import "image/color"
 
 // Color4 is a linear RGBA color with float64 components in [0,1].
-// (No gamma conversion; identical semantics to your Python class.)
 type Color4 struct {
 	R, G, B, A float64
 }
 
-func NewColor(r, g, b, a float64) Color4 {
+func New(r, g, b, a float64) Color4 {
 	return Color4{R: r, G: g, B: b, A: a}
 }
 
-func Color4FromStandardColor(c color.Color) Color4 {
+func (c Color4) RGBA() (r, g, b, a uint32) {
+	// Clamp to [0.0, 1.0]
+	clamp := func(v float64) float64 {
+		if v < 0 {
+			return 0
+		}
+		if v > 1 {
+			return 1
+		}
+		return v
+	}
+
+	rf := clamp(c.R)
+	gf := clamp(c.G)
+	bf := clamp(c.B)
+	af := clamp(c.A)
+
+	// Convert to pre-multiplied 16-bit values
+	return uint32(rf * af * 65535),
+		uint32(gf * af * 65535),
+		uint32(bf * af * 65535),
+		uint32(af * 65535)
+}
+
+func FromStandardColor(c color.Color) Color4 {
+	// Fast path: already a Color4
+	if c4, ok := c.(Color4); ok {
+		return c4
+	}
+
 	r16, g16, b16, a16 := c.RGBA()
 	if a16 == 0 {
 		return Color4{R: 0, G: 0, B: 0, A: 0}
 	}
-	// De-premultiply and normalize to [0, 1]
+
+	// De-premultiply and normalize to [0,1]
 	invA := float64(0xFFFF) / float64(a16)
 	return Color4{
 		R: float64(r16) * invA / 65535.0,
 		G: float64(g16) * invA / 65535.0,
 		B: float64(b16) * invA / 65535.0,
 		A: float64(a16) / 65535.0,
+	}
+}
+
+func From8BitRgb(r, g, b, a byte) Color4 {
+	return Color4{
+		R: float64(r) / 255.0,
+		G: float64(g) / 255.0,
+		B: float64(b) / 255.0,
+		A: float64(a) / 255.0,
 	}
 }
 

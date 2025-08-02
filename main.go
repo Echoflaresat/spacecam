@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/echoflaresat/spacecam/base"
+	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
 	"github.com/echoflaresat/spacecam/render"
 )
@@ -101,9 +101,9 @@ func main() {
 		*cfg.size,
 		*cfg.supersample,
 		render.Theme{
-			SkyRim: base.NewColor(0.3, 0.55, 1.0, 1.0),
-			DayRim: base.NewColor(0.3, 0.55, 1.0, 0.5),
-			Warm:   base.NewColor(1.02, 1.0, 0.98, 1.0),
+			SkyRim: colors.New(0.3, 0.55, 1.0, 1.0),
+			DayRim: colors.New(0.3, 0.55, 1.0, 0.5),
+			Warm:   colors.New(1.02, 1.0, 0.98, 1.0),
 			Day:    *cfg.day,
 			Night:  *cfg.night,
 			Clouds: *cfg.clouds,

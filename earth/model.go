@@ -3,7 +3,7 @@ package earth
 import (
 	"time"
 
-	"github.com/echoflaresat/spacecam/base"
+	"github.com/echoflaresat/spacecam/vectors"
 	"github.com/soniakeys/meeus/v3/julian"
 	"github.com/soniakeys/meeus/v3/sidereal"
 	"github.com/soniakeys/meeus/v3/solar"
@@ -11,7 +11,7 @@ import (
 
 const Radius = 6371.0 // Earth radius in km (spherical approximation)
 
-func SunDirectionECEF(t time.Time) base.Vec3 {
+func SunDirectionECEF(t time.Time) vectors.Vec3 {
 	t = t.UTC()
 	jd := julian.TimeToJD(t)
 
@@ -32,5 +32,5 @@ func SunDirectionECEF(t time.Time) base.Vec3 {
 	ye := -x*sinGMST + y*cosGMST
 	ze := z
 
-	return base.Vec3{X: xe, Y: ye, Z: ze}
+	return vectors.Vec3{X: xe, Y: ye, Z: ze}
 }

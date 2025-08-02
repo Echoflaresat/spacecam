@@ -7,8 +7,9 @@ import (
 	"math"
 	"os"
 
-	"github.com/echoflaresat/spacecam/base"
+	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/texture/tiff"
+	"github.com/echoflaresat/spacecam/vectors"
 
 	_ "image/jpeg" // register JPEG format with image.Decode
 	_ "image/png"  // register PNG format with image.Decode
@@ -65,9 +66,9 @@ func loadImage(path string) (image.Image, error) {
 
 }
 
-// Sample maps the 3D vector P (ECEF) to texture coordinates and returns a base.Color4.
+// Sample maps the 3D vector P (ECEF) to texture coordinates and returns a color.Color4.
 // Equivalent to the Python version: lon-lat projection, no interpolation.
-func (t Texture) Sample(P base.Vec3) base.Color4 {
+func (t Texture) Sample(P vectors.Vec3) colors.Color4 {
 	px, py, pz := P.X, P.Y, P.Z
 
 	lat := math.Atan2(pz, math.Sqrt(px*px+py*py))
@@ -98,5 +99,5 @@ func (t Texture) Sample(P base.Vec3) base.Color4 {
 	}
 
 	c := t.img.At(x, y)
-	return base.Color4FromStandardColor(c)
+	return colors.FromStandardColor(c)
 }

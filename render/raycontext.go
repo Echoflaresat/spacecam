@@ -3,34 +3,33 @@ package render
 import (
 	"math"
 
-	"github.com/echoflaresat/spacecam/base"
 	"github.com/echoflaresat/spacecam/earth"
+	"github.com/echoflaresat/spacecam/vectors"
 )
 
 // RayContext carries per-ray state and constants needed by the shader.
 type RayContext struct {
-	Origin            base.Vec3
-	SunDir            base.Vec3
+	Origin            vectors.Vec3
+	SunDir            vectors.Vec3
 	AltitudeKm        float64
-	RayDirection      base.Vec3
+	RayDirection      vectors.Vec3
 	DistToCenter      float64
 	T                 float64
-	HitPoint          base.Vec3
-	SurfaceNormal     base.Vec3
+	HitPoint          vectors.Vec3
+	SurfaceNormal     vectors.Vec3
 	RimLightFactor    float64
 	SunLightIntensity float64
 	ViewDotNormal     float64
 	theme             Theme
 }
 
-// NewRayContext mirrors your Python constructor.
 func NewRayContext(
-	origin base.Vec3,
-	sunDir base.Vec3,
+	origin vectors.Vec3,
+	sunDir vectors.Vec3,
 	altitudeKm float64,
 	theme Theme,
-) RayContext {
-	return RayContext{
+) *RayContext {
+	return &RayContext{
 		Origin:     origin,
 		SunDir:     sunDir,
 		AltitudeKm: altitudeKm,
@@ -39,7 +38,7 @@ func NewRayContext(
 }
 
 // SetRayDirection updates the per-ray fields like in your Python set_ray_direction().
-func (c *RayContext) SetRayDirection(rayDirection base.Vec3) {
+func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	c.RayDirection = rayDirection
 
 	// Closest approach of the ray to the origin (Earth center).
@@ -66,10 +65,9 @@ func (c *RayContext) SetRayDirection(rayDirection base.Vec3) {
 	c.ViewDotNormal = -c.SurfaceNormal.Dot(c.RayDirection)
 }
 
-// intersectSphere computes the parametric distance t along ray O + t*D to the first
-// intersection with a sphere of radius r. Returns -1 if there is no hit.
-// Matches your quadratic form: b = 2*(O·D), c = O·O - r^2.
-func intersectSphere(O, D base.Vec3, r float64) float64 {
+// IntersectEarth calculates the intersection of a ray (O + t*D) with a sphere of radius r.
+// Returns the closest positive t, or -1.0 if there is no intersection.
+func intersectSphere(O, D vectors.Vec3, r float64) float64 {
 	// b = 2*O·D, c = O·O - r^2, solve t^2 + b t + c = 0
 	OdotD := O.Dot(D)
 	b := 2.0 * OdotD
