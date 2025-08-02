@@ -1,4 +1,4 @@
-package texture
+package render
 
 import (
 	"image"
@@ -11,7 +11,7 @@ import (
 	_ "image/jpeg" // register JPEG format with image.Decode
 	_ "image/png"  // register PNG format with image.Decode
 
-	_ "github.com/echoflaresat/spacecam/texture/tiff" // register TIFF format with image.Decode
+	_ "github.com/echoflaresat/tiff" // register TIFF format with image.Decode
 )
 
 // Texture represents an RGB image with sampling by ECEF position vectors.
@@ -24,7 +24,7 @@ type Texture struct {
 
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
-func Load(path string) (Texture, error) {
+func loadTexture(path string) (Texture, error) {
 
 	// fallback to image codecs
 	f, err := os.Open(path)

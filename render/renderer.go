@@ -7,7 +7,6 @@ import (
 
 	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
-	"github.com/echoflaresat/spacecam/texture"
 	"github.com/echoflaresat/spacecam/vectors"
 )
 
@@ -254,16 +253,16 @@ func RenderScene(
 ) (*image.NRGBA, error) {
 
 	println("loading")
-	texDay, err := texture.Load(theme.Day)
+	texDay, err := loadTexture(theme.Day)
 	if err != nil {
 		return nil, err
 	}
-	texNight, err := texture.Load(theme.Night)
+	texNight, err := loadTexture(theme.Night)
 	if err != nil {
 		return nil, err
 	}
 	// Using day for clouds here, like your Python stub.
-	texClouds, err := texture.Load(theme.Clouds)
+	texClouds, err := loadTexture(theme.Clouds)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +287,7 @@ func RenderScene(
 // RaytraceScenePixels renders an outSize×outSize RGB frame using supersampling.
 // Returns a packed RGB buffer (row-major): len = outSize*outSize*3.
 func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int,
-	texDay, texNight, texClouds texture.Texture,
+	texDay, texNight, texClouds Texture,
 ) *image.NRGBA {
 
 	W, H := outSize, outSize
