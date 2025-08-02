@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"image"
 	"image/png"
 	"log"
@@ -12,36 +14,108 @@ import (
 	"github.com/echoflaresat/spacecam/render"
 )
 
+type config struct {
+	lat, lon, alt      *float64
+	fov, tilt          *float64
+	size, supersample  *int
+	out                *string
+	day, night, clouds *string
+	timeStr            *string
+	showHelp           *bool
+}
+
+func defineFlags() config {
+	return config{
+		lat:  flag.Float64("lat", 47.0, "Camera latitude in degrees"),
+		lon:  flag.Float64("lon", 19.0, "Camera longitude in degrees"),
+		alt:  flag.Float64("alt", 10878.0, "Camera altitude in kilometers"),
+		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
+		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
+
+		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
+		supersample: flag.Int("supersample", 2, "Supersampling factor (higher is slower but smoother)"),
+		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
+
+		out:    flag.String("out", "earth_view.png", "Output PNG file path"),
+		day:    flag.String("day", "assets/earth_day_scaled.jpg", "Day texture path"),
+		night:  flag.String("night", "assets/earth_night_scaled.jpg", "Night texture path"),
+		clouds: flag.String("clouds", "assets/earth_clouds_scaled.jpg", "Clouds texture path"),
+
+		showHelp: flag.Bool("h", false, "Show this help message"),
+	}
+}
+
+func printHelp() {
+	fmt.Fprintf(os.Stderr, `Earth Renderer - Satellite View Generator
+
+Usage:
+  %[1]s [options]
+
+`, os.Args[0])
+
+	printGroup("Camera Options", []string{"lat", "lon", "alt", "fov", "tilt"})
+	printGroup("Rendering Options", []string{"size", "ss", "time"})
+	printGroup("Assets", []string{"day", "night", "clouds"})
+	printGroup("Output", []string{"out"})
+	printGroup("Misc", []string{"h"})
+}
+
+func printGroup(title string, keys []string) {
+	fmt.Fprintf(os.Stderr, "%s:\n", title)
+	for _, name := range keys {
+		if f := flag.Lookup(name); f != nil {
+			fmt.Fprintf(os.Stderr, "  -%-8s %s (default %q)\n", f.Name, f.Usage, f.DefValue)
+		}
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
 func main() {
+	cfg := defineFlags()
+	flag.Usage = printHelp
+	flag.Parse()
 
-	latDeg, lonDeg, altitudeKm := 47.0, 19.0, 10878.0
-	fovDeg := 60.0
-	tiltDeg := 0.0
+	if *cfg.showHelp {
+		printHelp()
+		return
+	}
 
-	outputSize := 1024
-	supersampling := 2
-	sunDir := earth.SunDirectionECEF(time.Now())
+	// Parse time
+	var renderTime time.Time
+	var err error
+	if *cfg.timeStr != "" {
+		renderTime, err = time.Parse(time.RFC3339, *cfg.timeStr)
+		if err != nil {
+			log.Fatalf("Invalid time format: %v", err)
+		}
+	} else {
+		renderTime = time.Now()
+	}
 
-	camera := render.NewCamera(latDeg, lonDeg, altitudeKm, fovDeg, tiltDeg)
-	outputImage, err := render.RenderScene(
+	sunDir := earth.SunDirectionECEF(renderTime)
+	camera := render.NewCamera(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt)
+
+	img, err := render.RenderScene(
 		camera,
 		sunDir,
-		outputSize,
-		supersampling,
+		*cfg.size,
+		*cfg.supersample,
 		render.Theme{
 			SkyRim: base.NewColor(0.3, 0.55, 1.0, 1.0),
 			DayRim: base.NewColor(0.3, 0.55, 1.0, 0.5),
 			Warm:   base.NewColor(1.02, 1.0, 0.98, 1.0),
-			Day:    "assets/earth_day_scaled.jpg",
-			Night:  "assets/earth_night_scaled.jpg",
-			Clouds: "assets/earth_clouds_scaled.jpg",
+			Day:    *cfg.day,
+			Night:  *cfg.night,
+			Clouds: *cfg.clouds,
 		},
 	)
-
 	if err != nil {
 		log.Fatal(err)
 	}
-	writePNG("earth_view.png", outputImage)
+
+	if err := writePNG(*cfg.out, img); err != nil {
+		log.Fatalf("Failed to write PNG: %v", err)
+	}
 }
 
 func writePNG(path string, img image.Image) error {
@@ -50,6 +124,5 @@ func writePNG(path string, img image.Image) error {
 		return err
 	}
 	defer f.Close()
-	// Using stdlib PNG encoder
 	return (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(f, img)
 }
