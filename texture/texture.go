@@ -1,18 +1,17 @@
 package texture
 
 import (
-	"errors"
 	"image"
-	"log/slog"
 	"math"
 	"os"
 
 	"github.com/echoflaresat/spacecam/colors"
-	"github.com/echoflaresat/spacecam/texture/tiff"
 	"github.com/echoflaresat/spacecam/vectors"
 
 	_ "image/jpeg" // register JPEG format with image.Decode
 	_ "image/png"  // register PNG format with image.Decode
+
+	_ "github.com/echoflaresat/spacecam/texture/tiff" // register TIFF format with image.Decode
 )
 
 // Texture represents an RGB image with sampling by ECEF position vectors.
@@ -20,13 +19,22 @@ type Texture struct {
 	Width  int
 	Height int
 	img    image.Image
+	file   *os.File
 }
 
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
 func Load(path string) (Texture, error) {
-	img, err := loadImage(path)
+
+	// fallback to image codecs
+	f, err := os.Open(path)
 	if err != nil {
+		return Texture{}, err
+	}
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		f.Close()
 		return Texture{}, err
 	}
 
@@ -34,36 +42,15 @@ func Load(path string) (Texture, error) {
 		Width:  img.Bounds().Max.X,
 		Height: img.Bounds().Max.Y,
 		img:    img,
+		file:   f,
 	}, nil
 }
 
-func loadImage(path string) (image.Image, error) {
-	img, err := tiff.LoadStripedTiff(path)
-	if err == nil {
-		return img, nil
+func (t Texture) Close() error {
+	if t.file != nil {
+		return t.file.Close()
 	}
-	if !errors.Is(err, tiff.ErrInvalidTiffHeader) {
-		slog.Warn("failed to load striped TIFF", "path", path, "error", err)
-	}
-
-	img, err = tiff.LoadTiledTiff(path)
-	if err == nil {
-		return img, nil
-	}
-	if !errors.Is(err, tiff.ErrInvalidTiffHeader) {
-		slog.Warn("failed to load tiled TIFF", "path", path, "error", err)
-	}
-
-	// fallback to image codecs
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	img, _, err = image.Decode(f)
-	return img, err
-
+	return nil
 }
 
 // Sample maps the 3D vector P (ECEF) to texture coordinates and returns a color.Color4.

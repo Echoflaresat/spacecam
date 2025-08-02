@@ -9,25 +9,18 @@ import (
 	"io"
 	"math"
 
-	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/texture/tiff/compression"
 	"github.com/echoflaresat/spacecam/texture/tiff/photometric"
 	lru "github.com/hashicorp/golang-lru"
-	"golang.org/x/exp/mmap"
 )
 
 type tiledTiff struct {
 	header TiffHeader
-	reader *mmap.ReaderAt
+	reader io.ReaderAt
 	cache  *lru.Cache // tileIndex -> []byte
 }
 
-func LoadTiledTiff(path string) (image.Image, error) {
-	reader, err := mmap.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
+func LoadTiledTiff(reader io.ReaderAt) (image.Image, error) {
 	header, err := parseTiffHeader(reader)
 	if err != nil {
 		return nil, err
@@ -98,15 +91,20 @@ func (t *tiledTiff) At(x, y int) color.Color {
 	switch h.Photometric {
 	case photometric.RGB:
 
-		return colors.New(
-			float64(tile[pixOffset])/255.0,
-			float64(tile[pixOffset+1])/255.0,
-			float64(tile[pixOffset+2])/255.0,
-			1.0,
-		)
+		return color.RGBA{
+			R: tile[pixOffset],
+			G: tile[pixOffset+1],
+			B: tile[pixOffset+2],
+			A: 255,
+		}
+
 	case photometric.BlackIsZero:
-		v := float64(tile[pixOffset]) / 255.0
-		return colors.New(v, v, v, 1.0)
+		return color.RGBA{
+			R: tile[pixOffset],
+			G: tile[pixOffset],
+			B: tile[pixOffset],
+			A: 255,
+		}
 	default:
 		panic(fmt.Sprintf("unsupported PhotometricInterpretation: %d", h.Photometric))
 	}

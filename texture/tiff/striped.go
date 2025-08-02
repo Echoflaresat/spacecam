@@ -6,10 +6,8 @@ import (
 	"image/color"
 	"io"
 
-	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/texture/tiff/compression"
 	"github.com/echoflaresat/spacecam/texture/tiff/photometric"
-	"golang.org/x/exp/mmap"
 )
 
 type stripedTiff struct {
@@ -17,12 +15,7 @@ type stripedTiff struct {
 	reader io.ReaderAt
 }
 
-func LoadStripedTiff(path string) (image.Image, error) {
-
-	reader, err := mmap.Open(path)
-	if err != nil {
-		return nil, err
-	}
+func LoadStripedTiff(reader io.ReaderAt) (image.Image, error) {
 
 	header, err := parseTiffHeader(reader)
 	if err != nil {
@@ -80,12 +73,12 @@ func (t *stripedTiff) At(x, y int) color.Color {
 		if err != nil {
 			panic(fmt.Sprintf("could not read RGB pixel at (%d,%d): %v", x, y, err))
 		}
-		return colors.New(
-			float64(buf[0])/255.0,
-			float64(buf[1])/255.0,
-			float64(buf[2])/255.0,
-			1.0,
-		)
+		return color.RGBA{
+			R: buf[0],
+			G: buf[1],
+			B: buf[2],
+			A: 255,
+		}
 
 	case photometric.BlackIsZero:
 		var b [1]byte
@@ -93,8 +86,12 @@ func (t *stripedTiff) At(x, y int) color.Color {
 		if err != nil {
 			panic(fmt.Sprintf("could not read grayscale pixel at (%d,%d): %v", x, y, err))
 		}
-		v := float64(b[0]) / 255.0
-		return colors.New(v, v, v, 1.0)
+		return color.RGBA{
+			R: b[0],
+			G: b[0],
+			B: b[0],
+			A: 255,
+		}
 	default:
 		panic(fmt.Sprintf("unsupported PhotometricInterpretation: %d", h.Photometric))
 	}
