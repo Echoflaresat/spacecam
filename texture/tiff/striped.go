@@ -7,6 +7,8 @@ import (
 	"io"
 
 	"github.com/echoflaresat/spacecam/colors"
+	"github.com/echoflaresat/spacecam/texture/tiff/compression"
+	"github.com/echoflaresat/spacecam/texture/tiff/photometric"
 	"golang.org/x/exp/mmap"
 )
 
@@ -27,19 +29,19 @@ func LoadStripedTiff(path string) (image.Image, error) {
 		return nil, err
 	}
 
-	if header.Compression != 1 {
+	if header.Compression != compression.None {
 		return nil, fmt.Errorf("unsupported compression: %d", header.Compression)
 	}
-	if header.Photometric != 2 {
+	if header.Photometric != photometric.RGB && header.Photometric != photometric.BlackIsZero {
 		return nil, fmt.Errorf("expected RGB photometric interpretation, got %d", header.Photometric)
 	}
 
 	switch header.Photometric {
-	case 1:
+	case photometric.BlackIsZero:
 		if header.SamplesPerPixel != 1 || header.BitsPerSample[0] != 8 {
 			return nil, fmt.Errorf("unsupported grayscale format")
 		}
-	case 2:
+	case photometric.RGB:
 		if header.SamplesPerPixel != 3 || header.BitsPerSample[0] != 8 {
 			return nil, fmt.Errorf("unsupported RGB format")
 		}
@@ -72,7 +74,7 @@ func (t *stripedTiff) At(x, y int) color.Color {
 	idx := h.StripOffsets[strip] + (localY*h.Width+x)*bytesPerPixel
 
 	switch h.Photometric {
-	case 2: // RGB
+	case photometric.RGB:
 		var buf [3]byte
 		_, err := t.reader.ReadAt(buf[:], int64(idx))
 		if err != nil {
@@ -85,7 +87,7 @@ func (t *stripedTiff) At(x, y int) color.Color {
 			1.0,
 		)
 
-	case 1: // Grayscale (BlackIsZero)
+	case photometric.BlackIsZero:
 		var b [1]byte
 		_, err := t.reader.ReadAt(b[:], int64(idx))
 		if err != nil {

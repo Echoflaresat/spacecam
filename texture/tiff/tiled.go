@@ -10,6 +10,8 @@ import (
 	"math"
 
 	"github.com/echoflaresat/spacecam/colors"
+	"github.com/echoflaresat/spacecam/texture/tiff/compression"
+	"github.com/echoflaresat/spacecam/texture/tiff/photometric"
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/exp/mmap"
 )
@@ -31,18 +33,18 @@ func LoadTiledTiff(path string) (image.Image, error) {
 		return nil, err
 	}
 
-	if header.Compression != 1 && header.Compression != 8 {
+	if header.Compression != compression.None && header.Compression != compression.Deflate {
 		return nil, fmt.Errorf("unsupported compression: %d", header.Compression)
 	}
-	if header.Photometric != 2 && header.Photometric != 1 {
+	if header.Photometric != photometric.RGB && header.Photometric != photometric.BlackIsZero {
 		return nil, fmt.Errorf("unsupported photometric interpretation: %d", header.Photometric)
 	}
 	switch header.Photometric {
-	case 1:
+	case photometric.BlackIsZero:
 		if header.SamplesPerPixel != 1 || header.BitsPerSample[0] != 8 {
 			return nil, fmt.Errorf("unsupported grayscale format")
 		}
-	case 2:
+	case photometric.RGB:
 		if header.SamplesPerPixel != 3 || header.BitsPerSample[0] != 8 {
 			return nil, fmt.Errorf("unsupported RGB format")
 		}
@@ -94,14 +96,15 @@ func (t *tiledTiff) At(x, y int) color.Color {
 	pixOffset := localY*rowStride + localX*h.SamplesPerPixel
 
 	switch h.Photometric {
-	case 2: // RGB
+	case photometric.RGB:
+
 		return colors.New(
 			float64(tile[pixOffset])/255.0,
 			float64(tile[pixOffset+1])/255.0,
 			float64(tile[pixOffset+2])/255.0,
 			1.0,
 		)
-	case 1: // BlackIsZero grayscale
+	case photometric.BlackIsZero:
 		v := float64(tile[pixOffset]) / 255.0
 		return colors.New(v, v, v, 1.0)
 	default:
@@ -120,7 +123,7 @@ func (t *tiledTiff) loadTile(index int) []byte {
 		panic(fmt.Sprintf("failed to read tile %d: %v", index, err))
 	}
 
-	if h.Compression == 8 { // DEFLATE
+	if h.Compression == compression.Deflate {
 		r, err := zlib.NewReader(io.NopCloser(bytes.NewReader(buf)))
 		if err != nil {
 			panic(fmt.Sprintf("zlib decompression error: %v", err))

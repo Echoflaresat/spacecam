@@ -4,6 +4,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+
+	"github.com/echoflaresat/spacecam/texture/tiff/compression"
+	"github.com/echoflaresat/spacecam/texture/tiff/photometric"
+	"github.com/echoflaresat/spacecam/texture/tiff/planarconfig"
+	"github.com/echoflaresat/spacecam/texture/tiff/tifftag"
 )
 
 type TiffHeader struct {
@@ -11,9 +16,9 @@ type TiffHeader struct {
 	Width, Height   int
 	SamplesPerPixel int
 	BitsPerSample   []int
-	Photometric     int
-	Compression     int
-	PlanarConfig    int
+	Photometric     photometric.Interpretation
+	Compression     compression.Type
+	PlanarConfig    planarconfig.Type
 
 	// Strip layout
 	RowsPerStrip    int
@@ -26,24 +31,6 @@ type TiffHeader struct {
 	TileOffsets    []int
 	TileByteCounts []int
 }
-
-// https://www.loc.gov/preservation/digital/formats/content/tiff_tags.shtml
-const (
-	TagImageWidth                = 256
-	TagImageLength               = 257
-	TagBitsPerSample             = 258
-	TagCompression               = 259
-	TagPhotometricInterpretation = 262
-	TagStripOffsets              = 273
-	TagSamplesPerPixel           = 277
-	TagStripByteCounts           = 279
-	TagRowsPerStrip              = 278
-	TagPlanarConfiguration       = 284
-	TagTileWidth                 = 322
-	TagTileLength                = 323
-	TagTileOffsets               = 324
-	TagTileByteCounts            = 325
-)
 
 var ErrInvalidTiffHeader = errors.New("invalid TIFF header")
 
@@ -89,14 +76,14 @@ func parseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
 		ByteOrder:       bo,
 		BitsPerSample:   nil,
 		SamplesPerPixel: -1,
-		Photometric:     -1,
-		Compression:     -1,
-		PlanarConfig:    1, // default
+		Photometric:     photometric.Unknown,
+		Compression:     compression.Unknown,
+		PlanarConfig:    planarconfig.Unknown,
 	}
 
 	for i := 0; i < numEntries; i++ {
 		entry := entriesRaw[i*12 : (i+1)*12]
-		tag := bo.Uint16(entry[0:2])
+		tag := tifftag.Tag(bo.Uint16(entry[0:2]))
 		// typ := bo.Uint16(entry[2:4])
 		count := bo.Uint32(entry[4:8])
 		valOffset := int64(bo.Uint32(entry[8:12]))
@@ -131,45 +118,45 @@ func parseTiffHeader(reader io.ReaderAt) (TiffHeader, error) {
 		}
 
 		switch tag {
-		case TagImageWidth:
+		case tifftag.ImageWidth:
 			hdr.Width = int(valOffset)
-		case TagImageLength:
+		case tifftag.ImageLength:
 			hdr.Height = int(valOffset)
-		case TagBitsPerSample:
+		case tifftag.BitsPerSample:
 			hdr.BitsPerSample, err = readShortArray()
 			if err != nil {
 				return TiffHeader{}, err
 			}
-		case TagCompression:
-			hdr.Compression = int(bo.Uint16(entry[8:10]))
-		case TagPhotometricInterpretation:
-			hdr.Photometric = int(bo.Uint16(entry[8:10]))
-		case TagStripOffsets:
+		case tifftag.Compression:
+			hdr.Compression = compression.Type(bo.Uint16(entry[8:10]))
+		case tifftag.PhotometricInterpretation:
+			hdr.Photometric = photometric.Interpretation(bo.Uint16(entry[8:10]))
+		case tifftag.StripOffsets:
 			hdr.StripOffsets, err = readLongArray()
 			if err != nil {
 				return TiffHeader{}, err
 			}
-		case TagSamplesPerPixel:
+		case tifftag.SamplesPerPixel:
 			hdr.SamplesPerPixel = int(bo.Uint16(entry[8:10]))
-		case TagRowsPerStrip:
+		case tifftag.RowsPerStrip:
 			hdr.RowsPerStrip = int(valOffset)
-		case TagStripByteCounts:
+		case tifftag.StripByteCounts:
 			hdr.StripByteCounts, err = readLongArray()
 			if err != nil {
 				return TiffHeader{}, err
 			}
-		case TagPlanarConfiguration:
-			hdr.PlanarConfig = int(bo.Uint16(entry[8:10]))
-		case TagTileWidth:
+		case tifftag.PlanarConfiguration:
+			hdr.PlanarConfig = planarconfig.Type(bo.Uint16(entry[8:10]))
+		case tifftag.TileWidth:
 			hdr.TileWidth = int(valOffset)
-		case TagTileLength:
+		case tifftag.TileLength:
 			hdr.TileHeight = int(valOffset)
-		case TagTileOffsets:
+		case tifftag.TileOffsets:
 			hdr.TileOffsets, err = readLongArray()
 			if err != nil {
 				return TiffHeader{}, err
 			}
-		case TagTileByteCounts:
+		case tifftag.TileByteCounts:
 			hdr.TileByteCounts, err = readLongArray()
 			if err != nil {
 				return TiffHeader{}, err
