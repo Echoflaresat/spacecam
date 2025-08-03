@@ -1,6 +1,9 @@
 package colors
 
-import "image/color"
+import (
+	"image/color"
+	"math"
+)
 
 // Color4 is a linear RGBA color with float64 components in [0,1].
 type Color4 struct {
@@ -81,6 +84,15 @@ func (c Color4) Add(o Color4) Color4 {
 // Mul returns c * o (component-wise).
 func (c Color4) Mul(o Color4) Color4 {
 	return Color4{c.R * o.R, c.G * o.G, c.B * o.B, c.A * o.A}
+}
+
+func (c Color4) Pow(gamma float64) Color4 {
+	return Color4{
+		R: math.Pow(c.R, gamma),
+		G: math.Pow(c.G, gamma),
+		B: math.Pow(c.B, gamma),
+		A: c.A, // leave alpha untouched
+	}
 }
 
 // Scale returns c * s (scalar).

@@ -51,3 +51,13 @@ func (v Vec3) Cross(o Vec3) Vec3 {
 		Z: v.X*o.Y - v.Y*o.X,
 	}
 }
+
+// Orthogonal returns a unit vector that's perpendicular to v.
+func (v Vec3) Orthogonal() Vec3 {
+	if math.Abs(v.X) < 0.9 {
+		// cross with X axis
+		return v.Cross(Vec3{1, 0, 0}).Normalize()
+	}
+	// otherwise, cross with Y axis
+	return v.Cross(Vec3{0, 1, 0}).Normalize()
+}

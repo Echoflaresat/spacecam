@@ -83,7 +83,12 @@ func BlendNightDayEnergyConserving(CDay, CNight colors.Color4, light float64) co
 
 // RenderEarthSurface renders the visible surface color at the intersection point.
 // It blends day/night textures, clouds, specular, glow, and rim lighting.
-func RenderEarthSurface(ctx *RayContext, CDay, CNight, CClouds colors.Color4) colors.Color4 {
+func RenderEarthSurface(ctx *RayContext) colors.Color4 {
+
+	CDay := ctx.TexDay.Sample(ctx.HitPoint)
+	CNight := ctx.TexNight.Sample(ctx.HitPoint)
+	CClouds := ctx.TexClouds.Sample(ctx.HitPoint)
+
 	// Compute how much sunlight is hitting the surface (soft transition)
 	light := Smoothstep(-0.1, 0.1, ctx.SunLightIntensity)
 
@@ -99,8 +104,13 @@ func RenderEarthSurface(ctx *RayContext, CDay, CNight, CClouds colors.Color4) co
 	// 4. Atmospheric glow
 	CBlended = ApplyGlow(ctx, CBlended, light)
 
-	// 5. Day rim glow (soft limb highlight)
+	// // 5. Day rim glow (soft limb highlight)
 	CBlended = ApplyDayRimGlow(ctx, CBlended)
+
+	// ignore(CBlended)
+
+	// v := ctx.SurfaceNormal.Add(vectors.Vec3{X: 1, Y: 1, Z: 1}).Scale(0.5)
+	// CBlended = colors.Color4{R: v.X, G: v.Y, B: v.Z, A: 1}
 
 	return CBlended
 }
@@ -128,35 +138,26 @@ func IsOcean(color colors.Color4, blueThreshold float64) bool {
 // ApplySpecularHighlight adds a sun glint via a Blinn-Phong–style specular model.
 // Returns the adjusted RGB color (alpha unchanged).
 func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Color4 {
-	// Only apply on ocean-like pixels.
-	if !IsOcean(Cday, 1.05) {
-		return Crgb
-	}
-	// Only when the surface is lit.
+
 	if ctx.SunLightIntensity <= 0 {
 		return Crgb
 	}
 
-	// Half-vector between view (−ray) and light; here using sunDir - rayDir then normalize.
-	halfVec := ctx.SunDir.Sub(ctx.RayDirection).Normalize()
+	view := ctx.RayDirection.Scale(-1).Normalize()
+	light := ctx.SunDir.Normalize()
+	halfVec := view.Add(light).Normalize()
 
-	// Cosine of angle between surface normal and half-vector.
-	specAngle := ctx.SurfaceNormal.Dot(halfVec)
-	if specAngle <= 0 {
-		return Crgb
-	}
+	specAngle := Clip(ctx.SurfaceNormal.Dot(halfVec), 0.0, 1.0)
+	specular := math.Pow(specAngle, 30)
+	oceanFactor := Clip((Cday.B-0.5*(Cday.R+Cday.G))*10.0, 0.0, 1.0)
+	fresnel := math.Pow(1.0-ctx.ViewDotNormal, 2.0)
 
-	// Tight highlight.
-	specular := math.Pow(specAngle, 20)
+	reflectivity := oceanFactor
 
-	// Modulate by ocean brightness (fake Fresnel/roughness).
-	oceanReflectivity := Clip(Cday.B, 0.2, 1.0)
+	strength := specular * reflectivity * (0.2 + 0.8*fresnel)
 
-	strength := specular * oceanReflectivity * 0.8
-	if strength > 0 {
-		return Crgb.Add(colors.White().Scale(strength))
-	}
-	return Crgb
+	sunColor := colors.Color4{R: 1.0, G: 0.97, B: 0.9, A: 1.0}
+	return Crgb.Add(sunColor.Scale(strength))
 }
 
 // ApplyGlow adds a soft atmospheric glow near the grazing angles.
@@ -275,20 +276,21 @@ func RenderScene(
 		sunDir,
 		altitudeKm,
 		theme,
+		texDay,
+		texNight,
+		texClouds,
 	)
 
 	// Produce an RGB buffer (H*W*3)
 	println("raytracescenepixels")
-	img := RaytraceScenePixels(ctx, camera, outSize, supersampling, texDay, texNight, texClouds)
+	img := RaytraceScenePixels(ctx, camera, outSize, supersampling)
 	println("done")
 	return img, nil
 }
 
 // RaytraceScenePixels renders an outSize×outSize RGB frame using supersampling.
 // Returns a packed RGB buffer (row-major): len = outSize*outSize*3.
-func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int,
-	texDay, texNight, texClouds Texture,
-) *image.NRGBA {
+func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
 
 	W, H := outSize, outSize
 	offsets := GenerateSupersamplingOffsets(supersampling)
@@ -318,11 +320,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 					// misses Earth → sky rim glow
 					c = RenderSkyRimGlow(ctx)
 				} else {
-					// hit Earth → sample textures & shade surface
-					cDay := texDay.Sample(ctx.HitPoint)
-					cNight := texNight.Sample(ctx.HitPoint)
-					cClouds := texClouds.Sample(ctx.HitPoint)
-					c = RenderEarthSurface(ctx, cDay, cNight, cClouds)
+					c = RenderEarthSurface(ctx)
 				}
 				colorAccum = colorAccum.Add(c)
 			}

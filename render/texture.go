@@ -54,9 +54,37 @@ func (t Texture) Close() error {
 	return nil
 }
 
+func (t Texture) Sample4(P vectors.Vec3) (colors.Color4, colors.Color4, colors.Color4, colors.Color4) {
+	x, y := t.getXY(P)
+	return t.getColorAtXY(x, y),
+		t.getColorAtXY(x+1, y),
+		t.getColorAtXY(x, y+1),
+		t.getColorAtXY(x+1, y+1)
+}
+
 // Sample maps the 3D vector P (ECEF) to texture coordinates and returns a color.Color4.
 // Equivalent to the Python version: lon-lat projection, no interpolation.
 func (t Texture) Sample(P vectors.Vec3) colors.Color4 {
+	return t.getColorAtXY(t.getXY(P))
+}
+
+func (t Texture) getColorAtXY(x, y int) colors.Color4 {
+	if x < 0 {
+		x = 0
+	} else if x >= t.Width {
+		x = t.Width - 1
+	}
+	if y < 0 {
+		y = 0
+	} else if y >= t.Height {
+		y = t.Height - 1
+	}
+
+	c := t.img.At(x, y)
+	return colors.FromStandardColor(c)
+}
+
+func (t Texture) getXY(P vectors.Vec3) (int, int) {
 	px, py, pz := P.X, P.Y, P.Z
 
 	lat := math.Atan2(pz, math.Sqrt(px*px+py*py))
@@ -74,18 +102,5 @@ func (t Texture) Sample(P vectors.Vec3) colors.Color4 {
 
 	x := int(u)
 	y := int(v)
-
-	if x < 0 {
-		x = 0
-	} else if x >= t.Width {
-		x = t.Width - 1
-	}
-	if y < 0 {
-		y = 0
-	} else if y >= t.Height {
-		y = t.Height - 1
-	}
-
-	c := t.img.At(x, y)
-	return colors.FromStandardColor(c)
+	return x, y
 }

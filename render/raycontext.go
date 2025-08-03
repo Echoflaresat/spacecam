@@ -21,6 +21,9 @@ type RayContext struct {
 	SunLightIntensity float64
 	ViewDotNormal     float64
 	theme             Theme
+	TexDay            Texture
+	TexNight          Texture
+	TexClouds         Texture
 }
 
 func NewRayContext(
@@ -28,16 +31,23 @@ func NewRayContext(
 	sunDir vectors.Vec3,
 	altitudeKm float64,
 	theme Theme,
+	texDay Texture,
+	texNight Texture,
+	texClouds Texture,
 ) *RayContext {
 	return &RayContext{
 		Origin:     origin,
 		SunDir:     sunDir,
 		AltitudeKm: altitudeKm,
 		theme:      theme,
+		TexDay:     texDay,
+		TexNight:   texNight,
+		TexClouds:  texClouds,
 	}
 }
 
 // SetRayDirection updates the per-ray fields like in your Python set_ray_direction().
+// texElvation is used for bump mapping
 func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	c.RayDirection = rayDirection
 
@@ -46,19 +56,19 @@ func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	closestPointToCenter := c.Origin.Sub(c.RayDirection.Scale(dotOriginRay))
 	c.DistToCenter = closestPointToCenter.Norm()
 
-	// Ray–sphere intersection with Earth (spherical).
-	c.T = intersectSphere(c.Origin, c.RayDirection, earth.Radius)
-
-	// Hit point and surface normal (normalize even if T<0, to mirror Python behavior).
-	c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.T))
-	c.SurfaceNormal = c.HitPoint.Normalize()
-
 	// Rim light factor = cosine between sunDir and normalized closest vector.
 	if c.DistToCenter > 0 {
 		c.RimLightFactor = closestPointToCenter.Scale(1.0 / c.DistToCenter).Dot(c.SunDir)
 	} else {
 		c.RimLightFactor = 0.0
 	}
+
+	// Ray–sphere intersection with Earth (spherical).
+	c.T = intersectSphere(c.Origin, c.RayDirection, earth.Radius)
+
+	// Hit point and surface normal (normalize even if T<0, to mirror Python behavior).
+	c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.T))
+	c.SurfaceNormal = c.HitPoint.Normalize()
 
 	// Lighting cosines used by the shader.
 	c.SunLightIntensity = c.SurfaceNormal.Dot(c.SunDir)
