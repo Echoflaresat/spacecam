@@ -1,5 +1,7 @@
 # Earth Renderer
 
+![earth_view.png](earth_view.png)
+
 Earth Renderer is a Go-based library and command-line tool that generates photorealistic views of Earth from a satellite, high-altitude, or LEO (Low Earth Orbit) perspective using real-time lighting, cloud, and texture maps. This renderer is suitable for producing visuals for satellite simulations, mission planning tools, and educational applications.
 
 The `main.go` file provides an example usage of the library as a standalone executable, but the core rendering logic is fully reusable in other Go programs.
