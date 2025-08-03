@@ -26,11 +26,11 @@ type config struct {
 
 func defineFlags() config {
 	return config{
-		lat:  flag.Float64("lat", 47.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 19.0, "Camera longitude in degrees"),
+		lat:  flag.Float64("lat", 35.0, "Camera latitude in degrees"),
+		lon:  flag.Float64("lon", -79.0, "Camera longitude in degrees"),
 		alt:  flag.Float64("alt", 878.0, "Camera altitude in kilometers"),
-		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
-		tilt: flag.Float64("tilt", 40.0, "Camera tilt in degrees"),
+		fov:  flag.Float64("fov", 120.0, "Camera field of view in degrees"),
+		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 512, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 2, "Supersampling factor (higher is slower but smoother)"),

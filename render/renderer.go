@@ -161,7 +161,6 @@ func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Co
 }
 
 // ApplyGlow adds a soft atmospheric glow near the grazing angles.
-// - light is typically Smoothstep(-0.1, 0.1, ctx.SunLightIntensity).
 func ApplyGlow(ctx *RayContext, CBlended colors.Color4, light float64) colors.Color4 {
 	// Grazing factor ~ how much the ray grazes the surface (clamped 0..1).
 	grazing := 1.0 - (ctx.T / (ctx.AltitudeKm + earth.Radius))
@@ -199,24 +198,16 @@ func GaussianFadeDefault(x float64) float64 {
 
 // ApplyDayRimGlow adds a soft atmospheric rim glow to the surface — including
 // a subtle Earthshine component on the night side.
-//
-// Mirrors the Python version:
-//
-//	edge_alpha = gaussian_fade(ctx.view_dot_normal, center=0.0, width=0.50)
-//	light_fade = smoothstep(-0.2, 0.1, ctx.sun_light_intensity)
-//	shadow_fade = smoothstep(-0.7, -0.3, ctx.sun_light_intensity)
-//	total_glow = edge_alpha*(0.3*light_fade) + edge_alpha*(0.15*shadow_fade)
-//	if total_glow > 0: C + COLOR_DAY_RIM_GLOW*total_glow
 func ApplyDayRimGlow(ctx *RayContext, CBlended colors.Color4) colors.Color4 {
-	edgeAlpha := GaussianFade(ctx.ViewDotNormal, 0.0, 0.50) // fades at limb
+	edgeAlpha := GaussianFade(ctx.ViewDotNormal, 0.0, 0.60) // fades at limb
 
 	// Day-side glow
-	lightFade := Smoothstep(-0.2, 0.1, ctx.SunLightIntensity)
+	lightFade := Smoothstep(-0.1, 0.1, ctx.SunLightIntensity)
 	litStrength := edgeAlpha * lightFade * 0.3
 
 	// Night-side Earthshine glow
-	shadowFade := Smoothstep(-0.7, -0.3, ctx.SunLightIntensity) // fade in when in shadow
-	darkStrength := edgeAlpha * shadowFade * 0.15               // dimmer than day-side
+	shadowFade := Smoothstep(-0.3, -0.1, ctx.SunLightIntensity) // fade in when in shadow
+	darkStrength := edgeAlpha * shadowFade * 0.05               // dimmer than day-side
 
 	totalGlow := litStrength + darkStrength
 	if totalGlow > 0 {
