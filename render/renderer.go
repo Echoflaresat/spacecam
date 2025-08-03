@@ -288,10 +288,14 @@ func RenderScene(
 	return img, nil
 }
 
-// RaytraceScenePixels renders an outSize×outSize RGB frame using supersampling.
-// Returns a packed RGB buffer (row-major): len = outSize*outSize*3.
-func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
+// Add filmic tone mapping function
+func ToneMapUncharted2(x float64) float64 {
+	A, B, C, D, E, F := 0.15, 0.50, 0.10, 0.20, 0.02, 0.30
+	return ((x*(A*x+C*B) + D*E) / (x*(A*x+B) + D*F)) - E/F
+}
 
+// Update RaytraceScenePixels to apply tone mapping and adjusted saturation
+func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
 	W, H := outSize, outSize
 	offsets := GenerateSupersamplingOffsets(supersampling)
 	N := float64(len(offsets))
@@ -308,16 +312,13 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 
 		for x := 0; x < W; x++ {
 			colorAccum := colors.Color4{}
-
 			for _, off := range offsets {
 				dx, dy := off[0], off[1]
-
 				rayDir := camera.ComputeRay(float64(x)+dx, float64(y)+dy, W, H)
 				ctx.SetRayDirection(rayDir)
 
 				var c colors.Color4
 				if ctx.T < 0 {
-					// misses Earth → sky rim glow
 					c = RenderSkyRimGlow(ctx)
 				} else {
 					c = RenderEarthSurface(ctx)
@@ -325,15 +326,15 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				colorAccum = colorAccum.Add(c)
 			}
 
-			// Average
 			colorOut := colorAccum.Scale(1.0 / N)
 
-			// Warmth in linear space
+			// Warmth
 			colorOut = colorOut.Mul(ctx.theme.Warm)
 
-			// Composite over black
-			colorOut = colorOut.Scale(colorOut.A).Add(colors.Black())
+			// Gentle saturation boost
+			colorOut = colorOut.BoostSaturation(1.5)
 
+			colorOut = colorOut.CompositeOverBlack()
 			img.SetNRGBA(x, y, colorOut.ToNRGBA())
 		}
 	}

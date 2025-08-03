@@ -26,20 +26,20 @@ type config struct {
 
 func defineFlags() config {
 	return config{
-		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
+		lat:  flag.Float64("lat", 47.0, "Camera latitude in degrees"),
 		lon:  flag.Float64("lon", 19.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 8878.0, "Camera altitude in kilometers"),
+		alt:  flag.Float64("alt", 878.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
-		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
+		tilt: flag.Float64("tilt", 40.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 512, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 2, "Supersampling factor (higher is slower but smoother)"),
 		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
 
 		out:    flag.String("out", "earth_view.png", "Output PNG file path"),
-		day:    flag.String("day", "assets/world.200408.jpg", "Day texture path"),
-		night:  flag.String("night", "assets/night.jpg", "Night texture path"),
-		clouds: flag.String("clouds", "assets/cloud.2001210.jpg", "Clouds texture path"),
+		day:    flag.String("day", "assets/world.200408.tif", "Day texture path"),
+		night:  flag.String("night", "assets/night.tif", "Night texture path"),
+		clouds: flag.String("clouds", "assets/cloud.2001210.tif", "Clouds texture path"),
 
 		showHelp: flag.Bool("h", false, "Show this help message"),
 	}
@@ -101,7 +101,7 @@ func main() {
 		*cfg.size,
 		*cfg.supersample,
 		render.Theme{
-			SkyRim: colors.New(0.3, 0.55, 1.0, 1.0),
+			SkyRim: colors.New(0.1, 0.55, 1.0, 1.0),
 			DayRim: colors.New(0.3, 0.55, 1.0, 0.5),
 			Warm:   colors.New(1.02, 1.0, 0.98, 1.0),
 			Day:    *cfg.day,

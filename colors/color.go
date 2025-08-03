@@ -86,6 +86,20 @@ func (c Color4) Mul(o Color4) Color4 {
 	return Color4{c.R * o.R, c.G * o.G, c.B * o.B, c.A * o.A}
 }
 
+func (c Color4) BoostSaturation(factor float64) Color4 {
+	avg := (c.R + c.G + c.B) / 3
+	return Color4{
+		R: avg + (c.R-avg)*factor,
+		G: avg + (c.G-avg)*factor,
+		B: avg + (c.B-avg)*factor,
+		A: c.A,
+	}
+}
+
+func (c Color4) CompositeOverBlack() Color4 {
+	return Color4{c.R * c.A, c.G * c.A, c.B * c.A, 1.0}
+}
+
 func (c Color4) Pow(gamma float64) Color4 {
 	return Color4{
 		R: math.Pow(c.R, gamma),
