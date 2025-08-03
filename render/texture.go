@@ -2,16 +2,14 @@ package render
 
 import (
 	"image"
+	_ "image/jpeg" // register JPEG format with image.Decode
+	_ "image/png"  // register PNG format with image.Decode
 	"math"
 	"os"
 
 	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/vectors"
-
-	_ "image/jpeg" // register JPEG format with image.Decode
-	_ "image/png"  // register PNG format with image.Decode
-
-	_ "github.com/echoflaresat/tiff" // register TIFF format with image.Decode
+	"github.com/echoflaresat/tiff"
 )
 
 // Texture represents an RGB image with sampling by ECEF position vectors.
@@ -25,14 +23,17 @@ type Texture struct {
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
 func loadTexture(path string) (Texture, error) {
-
 	// fallback to image codecs
 	f, err := os.Open(path)
 	if err != nil {
 		return Texture{}, err
 	}
 
-	img, _, err := image.Decode(f)
+	img, err := tiff.Decode(f)
+	if err != nil {
+		img, _, err = image.Decode(f)
+	}
+
 	if err != nil {
 		f.Close()
 		return Texture{}, err
