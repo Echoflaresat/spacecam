@@ -50,28 +50,6 @@ func Clip(x, min, max float64) float64 {
 	return x
 }
 
-// RenderSkyRimGlow renders a faint atmospheric halo when a ray misses Earth
-// but grazes the atmosphere. Returns a linear RGBA color in [0,1].
-func RenderSkyRimGlow(ctx *RayContext) colors.Color4 {
-	// Fade in as the ray’s closest approach nears the Earth’s radius (plus ~200 km margin).
-	edgeFade := Smoothstep(earth.Radius+200.0, earth.Radius, ctx.DistToCenter)
-	if edgeFade <= 0 {
-		return colors.Color4{}
-	}
-
-	// Day-side glow ramps with rim alignment to the sun.
-	litGlow := Smoothstep(0.0, 0.5, ctx.RimLightFactor)
-
-	// Night-side Earthshine glow (stronger the more shadowed).
-	darkGlow := Smoothstep(-0.5, -0.2, -ctx.RimLightFactor)
-
-	// Combine contributions.
-	glowStrength := edgeFade * (0.9*litGlow + 0.3*darkGlow)
-
-	// Slightly cooler tone (taken from ctx.ColorSkyRimGlow), scaled by strength.
-	return ctx.theme.SkyRim.Scale(glowStrength)
-}
-
 // BlendNightDayEnergyConserving blends day and night colors using an
 // energy-conserving root-sum-square method to ensure a smooth transition.
 func BlendNightDayEnergyConserving(CDay, CNight colors.Color4, light float64) colors.Color4 {
@@ -100,12 +78,6 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 
 	// 3. Specular highlight (glint on oceans)
 	CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
-
-	// 4. Atmospheric glow
-	CBlended = ApplyGlow(ctx, CBlended, light)
-
-	// // 5. Day rim glow (soft limb highlight)
-	CBlended = ApplyDayRimGlow(ctx, CBlended)
 
 	// ignore(CBlended)
 
@@ -158,31 +130,6 @@ func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Co
 
 	sunColor := colors.Color4{R: 1.0, G: 0.97, B: 0.9, A: 1.0}
 	return Crgb.Add(sunColor.Scale(strength))
-}
-
-// ApplyGlow adds a soft atmospheric glow near the grazing angles.
-func ApplyGlow(ctx *RayContext, CBlended colors.Color4, light float64) colors.Color4 {
-	// Grazing factor ~ how much the ray grazes the surface (clamped 0..1).
-	grazing := 1.0 - (ctx.T / (ctx.AltitudeKm + earth.Radius))
-	grazing = Clip(grazing, 0.0, 1.0)
-
-	// Base glow strength scales with light and grazing^2.
-	glow := light * (grazing * grazing)
-
-	// Scale based on camera altitude (distance from surface).
-	altRatio := Clip(ctx.AltitudeKm/10000.0, 0.0, 1.0)
-	glow *= altRatio
-
-	// Cooler blue bias as altitude increases.
-	blueFactor := Clip((ctx.AltitudeKm-300.0)/1000.0, 0.0, 1.0)
-
-	// Mix toward the sky rim glow color with altitude-dependent blue factor.
-	r := CBlended.R*(1.0-glow) + ctx.theme.SkyRim.R*blueFactor*glow
-	g := CBlended.G*(1.0-glow) + ctx.theme.SkyRim.G*blueFactor*glow
-	b := CBlended.B*(1.0-glow) + ctx.theme.SkyRim.B*blueFactor*glow
-	a := CBlended.A*(1.0-glow) + 0.5*blueFactor*glow
-
-	return colors.Color4{R: r, G: g, B: b, A: a}
 }
 
 // GaussianFade returns a smooth Gaussian falloff centered at `center`
@@ -279,10 +226,60 @@ func RenderScene(
 	return img, nil
 }
 
-// Add filmic tone mapping function
-func ToneMapUncharted2(x float64) float64 {
-	A, B, C, D, E, F := 0.15, 0.50, 0.10, 0.20, 0.02, 0.30
-	return ((x*(A*x+C*B) + D*E) / (x*(A*x+B) + D*F)) - E/F
+// ApplyAtmosphereOverlay simulates blue atmospheric scattering along the view ray.
+// It increases near the horizon and scales with sunlight and depth.
+func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
+	if !ctx.InsideAtmosphere {
+		return base
+	}
+
+	if ctx.SunLightIntensity <= -0.05 {
+		return base // skip all scattering — fully dark side
+	}
+
+	numSteps := 32
+
+	t0 := ctx.AtmosphereEntryT
+	t1 := ctx.AtmosphereExitT
+	dt := (t1 - t0) / float64(numSteps)
+	scatteringAmount := 0.0
+
+	t := t0
+	for i := 0; i < numSteps; i++ {
+		point := ctx.Origin.Add(ctx.RayDirection.Scale(t))
+		height := point.Norm() - earth.Radius
+		if height > 100.0 {
+			t += dt
+			continue
+		}
+
+		density := math.Exp(-height / 8.0)
+
+		sunFactor := 0.5 + 0.5*ctx.SunDir.Dot(point.Normalize())
+		transmittance := math.Exp(-density * sunFactor)
+
+		scatter := density * transmittance * dt
+
+		// Estimate soft shadow: how close does the sun-ray from 'point' get to Earth?
+		toSun := ctx.SunDir.Normalize()
+		proj := toSun.Scale(point.Dot(toSun))
+		closest := point.Sub(proj)
+		closestDist := closest.Norm()
+
+		// Penumbra: smoothly fade from lit to shadowed
+		shadowFactor := Smoothstep(earth.Radius+10, earth.Radius-5, closestDist)
+
+		// Continue accumulating, but scale by shadowFactor
+		scatteringAmount += scatter * shadowFactor
+		t += dt
+	}
+
+	scatteringAmount *= 0.02 // rayleighScale
+	scatteringAmount = Clip(scatteringAmount, 0.0, 1.0)
+
+	lightFactor := Smoothstep(-0.6, 0.1, ctx.SunLightIntensity)
+	scattered := ctx.theme.DayRim.Scale(scatteringAmount * lightFactor)
+	return base.Add(scattered)
 }
 
 // Update RaytraceScenePixels to apply tone mapping and adjusted saturation
@@ -308,12 +305,12 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				rayDir := camera.ComputeRay(float64(x)+dx, float64(y)+dy, W, H)
 				ctx.SetRayDirection(rayDir)
 
-				var c colors.Color4
-				if ctx.T < 0 {
-					c = RenderSkyRimGlow(ctx)
-				} else {
+				c := colors.Black()
+				if ctx.T > 0 {
 					c = RenderEarthSurface(ctx)
 				}
+
+				c = ApplyAtmosphereOverlay(ctx, c)
 				colorAccum = colorAccum.Add(c)
 			}
 

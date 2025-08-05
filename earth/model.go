@@ -10,6 +10,8 @@ import (
 )
 
 const Radius = 6371.0 // Earth radius in km (spherical approximation)
+const AtmosphereKm = 200
+const RadiusWithAtmosphere = Radius + AtmosphereKm
 
 func SunDirectionECEF(t time.Time) vectors.Vec3 {
 	t = t.UTC()

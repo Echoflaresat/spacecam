@@ -24,6 +24,10 @@ type RayContext struct {
 	TexDay            Texture
 	TexNight          Texture
 	TexClouds         Texture
+
+	InsideAtmosphere bool
+	AtmosphereEntryT float64 // Ray parameter where it enters atmosphere
+	AtmosphereExitT  float64 // Ray parameter where it exits atmosphere
 }
 
 func NewRayContext(
@@ -66,13 +70,33 @@ func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	// Ray–sphere intersection with Earth (spherical).
 	c.T = intersectSphere(c.Origin, c.RayDirection, earth.Radius)
 
-	// Hit point and surface normal (normalize even if T<0, to mirror Python behavior).
-	c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.T))
-	c.SurfaceNormal = c.HitPoint.Normalize()
+	if c.T >= 0 {
+		c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.T))
+		c.SurfaceNormal = c.HitPoint.Normalize()
+		c.SunLightIntensity = c.SurfaceNormal.Dot(c.SunDir)
+		c.ViewDotNormal = -c.SurfaceNormal.Dot(c.RayDirection)
+	} else {
+		// No hit: use sun alignment along the view ray for atmospheric scattering
+		c.HitPoint = vectors.Vec3{}
+		c.SurfaceNormal = vectors.Vec3{}
+		c.ViewDotNormal = 0.0
+		c.SunLightIntensity = Clip(c.RayDirection.Dot(c.SunDir), 0.0, 1.0)
+	}
 
-	// Lighting cosines used by the shader.
-	c.SunLightIntensity = c.SurfaceNormal.Dot(c.SunDir)
-	c.ViewDotNormal = -c.SurfaceNormal.Dot(c.RayDirection)
+	hitsAtmo, t0, t1 := intersectSphereFull(c.Origin, c.RayDirection, earth.RadiusWithAtmosphere)
+	c.InsideAtmosphere = hitsAtmo
+	if hitsAtmo {
+		// Clamp exit point to before planet surface
+		if c.T > 0 && t1 > c.T {
+			t1 = c.T
+		}
+		c.AtmosphereEntryT = math.Max(t0, 0.0)
+		c.AtmosphereExitT = t1
+	} else {
+		c.AtmosphereEntryT = 0.0
+		c.AtmosphereExitT = 0.0
+	}
+
 }
 
 // IntersectEarth calculates the intersection of a ray (O + t*D) with a sphere of radius r.
@@ -105,4 +129,23 @@ func intersectSphere(O, D vectors.Vec3, r float64) float64 {
 		return t2
 	}
 	return -1.0
+}
+
+func intersectSphereFull(origin, dir vectors.Vec3, radius float64) (bool, float64, float64) {
+	oc := origin
+	a := dir.Dot(dir)
+	b := 2.0 * oc.Dot(dir)
+	c := oc.Dot(oc) - radius*radius
+
+	discriminant := b*b - 4*a*c
+	if discriminant < 0 {
+		return false, 0, 0
+	}
+	sqrtD := math.Sqrt(discriminant)
+	t0 := (-b - sqrtD) / (2 * a)
+	t1 := (-b + sqrtD) / (2 * a)
+	if t0 > t1 {
+		t0, t1 = t1, t0
+	}
+	return true, t0, t1
 }

@@ -116,7 +116,12 @@ func (c Color4) Scale(s float64) Color4 {
 
 // Mix returns lerp(c, o, t) = c*(1-t) + o*t.
 func (c Color4) Mix(o Color4, t float64) Color4 {
-	return c.Scale(1.0 - t).Add(o.Scale(t))
+	return Color4{
+		R: c.R*(1-t) + o.R*t,
+		G: c.G*(1-t) + o.G*t,
+		B: c.B*(1-t) + o.B*t,
+		A: c.A*(1-t) + o.A*t,
+	}
 }
 
 // Clamp01 clamps each component into [0,1].
