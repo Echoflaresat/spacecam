@@ -68,6 +68,18 @@ func From8BitRgb(r, g, b, a byte) Color4 {
 	}
 }
 
+func Red() Color4 {
+	return Color4{R: 1, G: 0, B: 0, A: 1}
+}
+
+func Blue() Color4 {
+	return Color4{R: 0, G: 0, B: 1, A: 1}
+}
+
+func Green() Color4 {
+	return Color4{R: 0, G: 1, B: 0, A: 1}
+}
+
 func White() Color4 {
 	return Color4{R: 1, G: 1, B: 1, A: 1}
 }

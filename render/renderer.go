@@ -11,7 +11,6 @@ import (
 )
 
 type Theme struct {
-	SkyRim colors.Color4
 	DayRim colors.Color4
 	Warm   colors.Color4
 	Day    string
@@ -79,11 +78,6 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	// 3. Specular highlight (glint on oceans)
 	CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
 
-	// ignore(CBlended)
-
-	// v := ctx.SurfaceNormal.Add(vectors.Vec3{X: 1, Y: 1, Z: 1}).Scale(0.5)
-	// CBlended = colors.Color4{R: v.X, G: v.Y, B: v.Z, A: 1}
-
 	return CBlended
 }
 
@@ -141,26 +135,6 @@ func GaussianFade(x, center, width float64) float64 {
 // Convenience version using your Python defaults: center=0.0, width=0.25.
 func GaussianFadeDefault(x float64) float64 {
 	return GaussianFade(x, 0.0, 0.25)
-}
-
-// ApplyDayRimGlow adds a soft atmospheric rim glow to the surface — including
-// a subtle Earthshine component on the night side.
-func ApplyDayRimGlow(ctx *RayContext, CBlended colors.Color4) colors.Color4 {
-	edgeAlpha := GaussianFade(ctx.ViewDotNormal, 0.0, 0.60) // fades at limb
-
-	// Day-side glow
-	lightFade := Smoothstep(-0.1, 0.1, ctx.SunLightIntensity)
-	litStrength := edgeAlpha * lightFade * 0.3
-
-	// Night-side Earthshine glow
-	shadowFade := Smoothstep(-0.3, -0.1, ctx.SunLightIntensity) // fade in when in shadow
-	darkStrength := edgeAlpha * shadowFade * 0.05               // dimmer than day-side
-
-	totalGlow := litStrength + darkStrength
-	if totalGlow > 0 {
-		return CBlended.Add(ctx.theme.DayRim.Scale(totalGlow))
-	}
-	return CBlended
 }
 
 // GenerateSupersamplingOffsets returns n×n offsets in [-0.5, +0.5] for
@@ -228,58 +202,113 @@ func RenderScene(
 
 // ApplyAtmosphereOverlay simulates blue atmospheric scattering along the view ray.
 // It increases near the horizon and scales with sunlight and depth.
+// ApplyAtmosphereOverlay simulates atmospheric scattering along the view ray using ray tracing.
+// It accounts for Rayleigh scattering, Earth's shadow, backlighting, and rays passing through thin air.
 func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
-	if !ctx.InsideAtmosphere {
+	const H = 25.0          // scale height (km)
+	const maxHeight = 120.0 // max atmosphere extent (km)
+	const rayleighStrength = 0.008
+
+	atmoRadius := earth.Radius + maxHeight
+
+	// Step 1: Ray-atmosphere intersection
+	hitAtmo, tEntryAtmo, tExitAtmo := intersectSphereFull(ctx.Origin, ctx.RayDirection, atmoRadius)
+	if !hitAtmo || tExitAtmo < 0 {
 		return base
 	}
 
-	if ctx.SunLightIntensity <= -0.05 {
-		return base // skip all scattering — fully dark side
+	// Step 2: Ray-ground intersection
+	hitEarth, tEntryEarth, _ := intersectSphereFull(ctx.Origin, ctx.RayDirection, earth.Radius)
+
+	// Clip to visible atmosphere
+	tMin := math.Max(0, tEntryAtmo)
+	tMax := tExitAtmo
+	if hitEarth && tEntryEarth > 0 && tEntryEarth < tMax {
+		tMax = tEntryEarth
+	}
+	if tMax <= tMin {
+		return base
 	}
 
-	numSteps := 32
+	// Step 3: Shadow intersection
+	hitShadow, tShadowEntry, tShadowExit := IntersectShadowCylinder(ctx.Origin, ctx.RayDirection, ctx.SunDir, earth.Radius)
 
-	t0 := ctx.AtmosphereEntryT
-	t1 := ctx.AtmosphereExitT
-	dt := (t1 - t0) / float64(numSteps)
-	scatteringAmount := 0.0
-
-	t := t0
-	for i := 0; i < numSteps; i++ {
-		point := ctx.Origin.Add(ctx.RayDirection.Scale(t))
-		height := point.Norm() - earth.Radius
-		if height > 100.0 {
-			t += dt
-			continue
+	// Step 4: Compute total lit length
+	litLen := tMax - tMin
+	if hitShadow {
+		shadowStart := math.Max(tMin, tShadowEntry)
+		shadowEnd := math.Min(tMax, tShadowExit)
+		if shadowEnd > shadowStart {
+			litLen -= (shadowEnd - shadowStart)
 		}
-
-		density := math.Exp(-height / 8.0)
-
-		sunFactor := 0.5 + 0.5*ctx.SunDir.Dot(point.Normalize())
-		transmittance := math.Exp(-density * sunFactor)
-
-		scatter := density * transmittance * dt
-
-		// Estimate soft shadow: how close does the sun-ray from 'point' get to Earth?
-		toSun := ctx.SunDir.Normalize()
-		proj := toSun.Scale(point.Dot(toSun))
-		closest := point.Sub(proj)
-		closestDist := closest.Norm()
-
-		// Penumbra: smoothly fade from lit to shadowed
-		shadowFactor := Smoothstep(earth.Radius+10, earth.Radius-5, closestDist)
-
-		// Continue accumulating, but scale by shadowFactor
-		scatteringAmount += scatter * shadowFactor
-		t += dt
+	}
+	if litLen <= 0 {
+		return base
 	}
 
-	scatteringAmount *= 0.02 // rayleighScale
-	scatteringAmount = Clip(scatteringAmount, 0.0, 1.0)
+	// Step 5: Estimate average altitude
+	tMid := (tMin + tMax) * 0.5
+	midPoint := ctx.Origin.Add(ctx.RayDirection.Scale(tMid))
+	avgHeight := midPoint.Norm() - earth.Radius
+	avgDensity := math.Exp(-avgHeight / H)
 
-	lightFactor := Smoothstep(-0.6, 0.1, ctx.SunLightIntensity)
-	scattered := ctx.theme.DayRim.Scale(scatteringAmount * lightFactor)
-	return base.Add(scattered)
+	amount := litLen * avgDensity * rayleighStrength
+	amount = Clip(amount, 0.0, 1.0)
+
+	return base.Mix(ctx.theme.DayRim, amount)
+}
+
+func IntersectShadowCylinder(
+	rayOrigin, rayDir, sunDir vectors.Vec3,
+	earthRadius float64,
+) (bool, float64, float64) {
+	V := sunDir.Normalize().Scale(-1) // Axis direction
+	CO := rayOrigin
+
+	// Vector from cylinder origin to ray origin
+
+	// Project ray and offset onto plane perpendicular to V
+	dDotV := rayDir.Dot(V)
+	dPerp := rayDir.Sub(V.Scale(dDotV))
+
+	coDotV := CO.Dot(V)
+	coPerp := CO.Sub(V.Scale(coDotV))
+
+	a := dPerp.Dot(dPerp)
+	b := 2 * dPerp.Dot(coPerp)
+	c := coPerp.Dot(coPerp) - earthRadius*earthRadius
+
+	discriminant := b*b - 4*a*c
+	if discriminant < 0 || a == 0 {
+		return false, 0, 0
+	}
+
+	sqrtD := math.Sqrt(discriminant)
+	t0 := (-b - sqrtD) / (2 * a)
+	t1 := (-b + sqrtD) / (2 * a)
+
+	if t1 < 0 {
+		return false, 0, 0
+	}
+
+	M1 := rayOrigin.Add(rayDir.Scale(t0))
+	if M1.Dot(V) < 0 {
+		return false, 0, 0
+	}
+
+	entry := math.Max(0, t0)
+	exit := t1
+	return true, entry, exit
+}
+
+func clamp01(x float64) float64 {
+	if x < 0 {
+		return 0
+	}
+	if x > 1 {
+		return 1
+	}
+	return x
 }
 
 // Update RaytraceScenePixels to apply tone mapping and adjusted saturation
