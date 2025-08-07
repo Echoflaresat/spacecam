@@ -205,9 +205,9 @@ func RenderScene(
 // ApplyAtmosphereOverlay simulates atmospheric scattering along the view ray using ray tracing.
 // It accounts for Rayleigh scattering, Earth's shadow, backlighting, and rays passing through thin air.
 func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
-	const H = 2000.0        // scale height (km)
-	const maxHeight = 100.0 // max atmosphere extent (km)
-	const rayleighStrength = 0.3
+	const H = 55            // scale height (km)
+	const maxHeight = 120.0 // max atmosphere extent (km)
+	const rayleighStrength = 0.2
 
 	atmoRadius := earth.Radius + maxHeight
 
@@ -235,6 +235,7 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	// Step 4: Compute total lit length
 	litLen := tMax - tMin
+
 	if hitShadow {
 		shadowStart := math.Max(tMin, tShadowEntry)
 		shadowEnd := math.Min(tMax, tShadowExit)
@@ -250,15 +251,13 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	tMid := (tMin + tMax) * 0.5
 	midPoint := ctx.Origin.Add(ctx.RayDirection.Scale(tMid))
 	avgHeight := midPoint.Norm() - earth.Radius
+
 	// Fade stronger near surface, weaker at high altitudes
 	avgDensity := math.Exp(-avgHeight / H)
-	amount := litLen * avgDensity * rayleighStrength * 0.005
+	amount := math.Log(litLen) * avgDensity * rayleighStrength
 	amount = Clip(amount, 0.0, 1.0)
 
-	a := ctx.theme.DayRim.A * avgDensity
-	c := colors.Color4{R: ctx.theme.DayRim.R, G: ctx.theme.DayRim.G, B: ctx.theme.DayRim.B, A: a * a}
-
-	return base.Mix(c, amount)
+	return base.Mix(ctx.theme.DayRim, amount)
 }
 
 func IntersectShadowCylinder(

@@ -26,10 +26,10 @@ type config struct {
 
 func defineFlags() config {
 	return config{
-		lat:  flag.Float64("lat", 40.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 14.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
-		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
+		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
+		lon:  flag.Float64("lon", 10.0, "Camera longitude in degrees"),
+		alt:  flag.Float64("alt", 35880.0, "Camera altitude in kilometers"),
+		fov:  flag.Float64("fov", 20.0, "Camera field of view in degrees"),
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
@@ -102,7 +102,9 @@ func main() {
 		*cfg.size,
 		*cfg.supersample,
 		render.Theme{
-			DayRim: colors.New(0x75/255.0, 0x97/255.0, 0xc1/255.0, 0.5),
+			// DayRim: colors.New(0x75/255.0, 0x97/255.0, 0xc1/255.0, 0.5),
+			// DayRim: colors.New(0.529, 0.808, 0.922, 0.5),
+			DayRim: colors.New(0.529, 0.808, 0.980, 0.5),
 			Warm:   colors.New(1.02, 1.0, 0.98, 1.0),
 			Day:    *cfg.day,
 			Night:  *cfg.night,
