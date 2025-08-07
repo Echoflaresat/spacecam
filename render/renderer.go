@@ -11,11 +11,12 @@ import (
 )
 
 type Theme struct {
-	DayRim colors.Color4
-	Warm   colors.Color4
-	Day    string
-	Night  string
-	Clouds string
+	DayRim   colors.Color4
+	NightRim colors.Color4
+	Warm     colors.Color4
+	Day      string
+	Night    string
+	Clouds   string
 }
 
 // Smoothstep performs a Hermite interpolation between 0 and 1 across [edge0, edge1].
@@ -75,8 +76,10 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	// 2. Blend clouds
 	CBlended = BlendClouds(CBlended, CClouds, light, 2.0)
 
+	CBlended = ApplyAtmosphereOverlay(ctx, CBlended)
+
 	// 3. Specular highlight (glint on oceans)
-	CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
+	// CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
 
 	return CBlended
 }
@@ -101,29 +104,48 @@ func IsOcean(color colors.Color4, blueThreshold float64) bool {
 	return (color.B > color.R*blueThreshold) && (color.B > color.G*blueThreshold)
 }
 
-// ApplySpecularHighlight adds a sun glint via a Blinn-Phong–style specular model.
-// Returns the adjusted RGB color (alpha unchanged).
 func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Color4 {
 
-	if ctx.SunLightIntensity <= 0 {
-		return Crgb
-	}
-
+	// View direction: from surface to camera
 	view := ctx.RayDirection.Scale(-1).Normalize()
+
+	// Light direction: from surface to sun
 	light := ctx.SunDir.Normalize()
-	halfVec := view.Add(light).Normalize()
 
-	specAngle := Clip(ctx.SurfaceNormal.Dot(halfVec), 0.0, 1.0)
-	specular := math.Pow(specAngle, 30)
-	oceanFactor := Clip((Cday.B-0.5*(Cday.R+Cday.G))*10.0, 0.0, 1.0)
-	fresnel := math.Pow(1.0-ctx.ViewDotNormal, 2.0)
+	// Surface normal
+	N := ctx.HitPoint.Normalize()
 
-	reflectivity := oceanFactor
+	// Incoming light vector
+	L := light.Scale(-1)
 
-	strength := specular * reflectivity * (0.2 + 0.8*fresnel)
+	// Reflect(-L, N)
+	R := L.Sub(N.Scale(2 * L.Dot(N))).Normalize()
 
-	sunColor := colors.Color4{R: 1.0, G: 0.97, B: 0.9, A: 1.0}
-	return Crgb.Add(sunColor.Scale(strength))
+	// Angle between reflection and view direction
+	exponent := 50.0
+	specAngle := Clip(R.Dot(view), 0.0, 1.0)
+	if R.Dot(view) >= 0.99 {
+		return colors.White()
+	}
+	specAngleExp := math.Pow(0.8, exponent)
+	nl := Clip(N.Dot(light), 0.0, 1.0)
+	// Intensity
+	res := colors.Black()
+	// res = res.Add(colors.Red().Scale(nl))
+	// res = res.Add(colors.Red().Scale(nl))
+	res = res.Add(colors.Blue().Scale(specAngle))
+	// res = res.Add(colors.Red().Scale(specAngleExp))
+	// res = res.Add(colors.Blue().Scale(R.X))
+	// res = res.Add(colors.Red().Scale(light.X))
+	ignore(R, exponent, specAngle, nl, specAngleExp)
+	return res
+}
+func ignore(x ...any) {
+
+}
+
+func Reflect(v, n vectors.Vec3) vectors.Vec3 {
+	return v.Sub(n.Scale(2 * v.Dot(n)))
 }
 
 // GaussianFade returns a smooth Gaussian falloff centered at `center`
@@ -235,15 +257,17 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	// Step 4: Compute total lit length
 	litLen := tMax - tMin
+	unlitLen := 0.0
 
 	if hitShadow {
 		shadowStart := math.Max(tMin, tShadowEntry)
 		shadowEnd := math.Min(tMax, tShadowExit)
 		if shadowEnd > shadowStart {
 			litLen -= (shadowEnd - shadowStart)
+			unlitLen += (shadowEnd - shadowStart)
 		}
 	}
-	if litLen <= 0 {
+	if litLen <= 0 && unlitLen <= 0 {
 		return base
 	}
 
@@ -253,11 +277,31 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	avgHeight := midPoint.Norm() - earth.Radius
 
 	// Fade stronger near surface, weaker at high altitudes
-	avgDensity := math.Exp(-avgHeight / H)
-	amount := math.Log(litLen) * avgDensity * rayleighStrength
-	amount = Clip(amount, 0.0, 1.0)
 
-	return base.Mix(ctx.theme.DayRim, amount)
+	avgDensity := math.Exp(-avgHeight / H)
+
+	litAmount := math.Log(litLen+unlitLen) * avgDensity * rayleighStrength
+	litAmount = Clip(litAmount, 0.0, 1.0)
+
+	wNight := unlitLen / (litLen + unlitLen + 1e-5)
+	wNight = math.Pow(wNight, 0.5)
+
+	DayRim := colors.New(0.12, 0.56, 1.00, 2.0)
+	OuterRim := colors.New(0.75, 0.95, 1.00, 2.0).Scale(0.5)
+	NightRim := colors.New(0.05, 0.07, 0.20, 0.5)
+
+	viewAngle := Clip(ctx.ViewDotNormal, 0.0, 1.0)
+	rimAmount := math.Pow(1.0-Clip(viewAngle, 0.0, 1.0), 2.0)
+	skyColor := DayRim.Mix(OuterRim, rimAmount)
+
+	if rimAmount > 0.9 {
+		twilight := colors.New(0.9, 0.6, 0.8, 1) // warm purple
+		skyColor = skyColor.Mix(twilight, rimAmount-0.9)
+	}
+
+	tintColor := skyColor.Mix(NightRim, wNight)
+
+	return base.Mix(tintColor, litAmount)
 }
 
 func IntersectShadowCylinder(
@@ -329,9 +373,10 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				c := colors.Black()
 				if ctx.T > 0 {
 					c = RenderEarthSurface(ctx)
+				} else {
+					c = ApplyAtmosphereOverlay(ctx, c)
 				}
 
-				c = ApplyAtmosphereOverlay(ctx, c)
 				colorAccum = colorAccum.Add(c)
 			}
 
