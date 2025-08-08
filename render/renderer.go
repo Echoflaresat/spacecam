@@ -13,6 +13,7 @@ import (
 type Theme struct {
 	DayRim   colors.Color4
 	NightRim colors.Color4
+	OuterRim colors.Color4
 	Warm     colors.Color4
 	Day      string
 	Night    string
@@ -50,9 +51,7 @@ func Clip(x, min, max float64) float64 {
 	return x
 }
 
-// BlendNightDayEnergyConserving blends day and night colors using an
-// energy-conserving root-sum-square method to ensure a smooth transition.
-func BlendNightDayEnergyConserving(CDay, CNight colors.Color4, light float64) colors.Color4 {
+func BlendNightDay(ctx *RayContext, CDay, CNight colors.Color4, light float64) colors.Color4 {
 	r := math.Sqrt((1-light)*CNight.R*CNight.R + light*CDay.R*CDay.R)
 	g := math.Sqrt((1-light)*CNight.G*CNight.G + light*CDay.G*CDay.G)
 	b := math.Sqrt((1-light)*CNight.B*CNight.B + light*CDay.B*CDay.B)
@@ -68,10 +67,10 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	CClouds := ctx.TexClouds.Sample(ctx.HitPoint)
 
 	// Compute how much sunlight is hitting the surface (soft transition)
-	light := Smoothstep(-0.1, 0.1, ctx.SunLightIntensity)
+	light := Smoothstep(-0.25, 0.05, ctx.SunLightIntensity)
 
 	// 1. Blend day and night
-	CBlended := BlendNightDayEnergyConserving(CDay, CNight, light)
+	CBlended := BlendNightDay(ctx, CDay, CNight, light)
 
 	// 2. Blend clouds
 	CBlended = BlendClouds(CBlended, CClouds, light, 2.0)
@@ -79,7 +78,7 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	CBlended = ApplyAtmosphereOverlay(ctx, CBlended)
 
 	// 3. Specular highlight (glint on oceans)
-	// CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
+	CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
 
 	return CBlended
 }
@@ -106,39 +105,32 @@ func IsOcean(color colors.Color4, blueThreshold float64) bool {
 
 func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Color4 {
 
-	// View direction: from surface to camera
-	view := ctx.RayDirection.Scale(-1).Normalize()
-
-	// Light direction: from surface to sun
-	light := ctx.SunDir.Normalize()
-
-	// Surface normal
-	N := ctx.HitPoint.Normalize()
-
-	// Incoming light vector
-	L := light.Scale(-1)
-
-	// Reflect(-L, N)
-	R := L.Sub(N.Scale(2 * L.Dot(N))).Normalize()
-
-	// Angle between reflection and view direction
-	exponent := 50.0
-	specAngle := Clip(R.Dot(view), 0.0, 1.0)
-	if R.Dot(view) >= 0.99 {
-		return colors.White()
+	if !IsOcean(Cday, 1.1) { // Only apply to ocean
+		return Crgb
 	}
-	specAngleExp := math.Pow(0.8, exponent)
-	nl := Clip(N.Dot(light), 0.0, 1.0)
-	// Intensity
-	res := colors.Black()
-	// res = res.Add(colors.Red().Scale(nl))
-	// res = res.Add(colors.Red().Scale(nl))
-	res = res.Add(colors.Blue().Scale(specAngle))
-	// res = res.Add(colors.Red().Scale(specAngleExp))
-	// res = res.Add(colors.Blue().Scale(R.X))
-	// res = res.Add(colors.Red().Scale(light.X))
-	ignore(R, exponent, specAngle, nl, specAngleExp)
-	return res
+
+	view := ctx.RayDirection.Scale(-1).Normalize()
+	light := ctx.SunDir.Normalize()
+	N := ctx.HitPoint.Normalize()
+	L := light.Scale(-1)
+	R := Reflect(L, N).Normalize()
+
+	specAngle := Clip(R.Dot(view), 0.0, 1.0)
+
+	// Optional grazing angle falloff (to suppress edge blowouts)
+	normalView := Clip(N.Dot(view), 0.0, 1.0)
+	grazingFalloff := math.Pow(normalView, 3.0)
+
+	exponent := 400.0 // Much sharper highlight
+	strength := 1.0   // Can tweak this if it's too much
+
+	specular := math.Pow(specAngle, exponent) * grazingFalloff * strength
+	specular = Clip(specular, 0.0, 1.0)
+
+	sunColor := colors.New(1.0, 0.97, 0.9, 1.0) // warm sun tint
+	highlight := sunColor.Scale(specular)
+
+	return Crgb.Add(highlight)
 }
 func ignore(x ...any) {
 
@@ -267,8 +259,13 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 			unlitLen += (shadowEnd - shadowStart)
 		}
 	}
+
+	// Invert and square to exaggerate rim region
+	viewAngle := Clip(ctx.ViewDotNormal, 0.0, 1.0)
+	rimAmount := math.Pow(1.0-Clip(viewAngle, 0.0, 1.0), 3.0) * 0.6
+
 	if litLen <= 0 && unlitLen <= 0 {
-		return base
+		return base.Add(ctx.theme.OuterRim.Scale(rimAmount))
 	}
 
 	// Step 5: Estimate average altitude
@@ -286,20 +283,14 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
 	wNight = math.Pow(wNight, 0.5)
 
-	DayRim := colors.New(0.12, 0.56, 1.00, 2.0)
-	OuterRim := colors.New(0.75, 0.95, 1.00, 2.0).Scale(0.5)
-	NightRim := colors.New(0.05, 0.07, 0.20, 0.5)
-
-	viewAngle := Clip(ctx.ViewDotNormal, 0.0, 1.0)
-	rimAmount := math.Pow(1.0-Clip(viewAngle, 0.0, 1.0), 2.0)
-	skyColor := DayRim.Mix(OuterRim, rimAmount)
+	skyColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
 
 	if rimAmount > 0.9 {
 		twilight := colors.New(0.9, 0.6, 0.8, 1) // warm purple
 		skyColor = skyColor.Mix(twilight, rimAmount-0.9)
 	}
 
-	tintColor := skyColor.Mix(NightRim, wNight)
+	tintColor := skyColor.Mix(ctx.theme.NightRim, wNight)
 
 	return base.Mix(tintColor, litAmount)
 }

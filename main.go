@@ -6,14 +6,12 @@ import (
 	"image"
 	"image/png"
 	"log"
-	"math"
 	"os"
 	"time"
 
 	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
 	"github.com/echoflaresat/spacecam/render"
-	"github.com/echoflaresat/spacecam/vectors"
 )
 
 type config struct {
@@ -30,9 +28,9 @@ func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
 		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
+		alt:  flag.Float64("alt", 880.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 80.0, "Camera field of view in degrees"),
-		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
+		tilt: flag.Float64("tilt", 40.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 640, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
@@ -96,10 +94,6 @@ func main() {
 	}
 
 	sunDir := earth.SunDirectionECEF(renderTime)
-	phi := 90.0
-	sunDir = vectors.Vec3{math.Cos(phi / 180.0 * math.Pi), math.Sin(phi / 180.0 * math.Pi), 0}
-	// positive z: up
-	//
 	camera := render.NewCamera(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt)
 
 	img, err := render.RenderScene(
@@ -109,8 +103,9 @@ func main() {
 		*cfg.supersample,
 		render.Theme{
 			// DayRim:   colors.New(0.529, 0.808, 0.980, 0.5),
-			DayRim:   colors.New(0.529, 0.808, 0.980, 0.5),
-			NightRim: colors.New(0.1, 0.1, 0.1, 0.1),
+			DayRim:   colors.New(0.25, 0.60, 1.00, 2.0), // Slightly deeper sky blue
+			NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
+			OuterRim: colors.New(0.6, 0.9, 1.2, 2.0).Scale(0.4), // Softer outer glow
 			Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
 			Day:      *cfg.day,
 			Night:    *cfg.night,
