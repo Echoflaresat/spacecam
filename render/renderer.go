@@ -75,8 +75,6 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	// 2. Blend clouds
 	CBlended = BlendClouds(CBlended, CClouds, light, 2.0)
 
-	CBlended = ApplyAtmosphereOverlay(ctx, CBlended)
-
 	// 3. Specular highlight (glint on oceans)
 	CBlended = ApplySpecularHighlight(ctx, CBlended, CDay)
 
@@ -280,7 +278,12 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	sunAngle := (1.0 - viewToSun) * 0.5           // 0 near sun, 1 opposite
 
 	// Hue shift: warm when near sun, cool away
-	skyColor := colors.New(0.5+0.5*sunAngle, 0.6, 1.0, 1.0) // rough blue→pink→orange transition
+	skyColor := colors.New(
+		Lerp(1.0, 0.6, sunAngle), // R: white → neutral warm
+		Lerp(1.0, 0.7, sunAngle), // G: white → slightly greenish
+		Lerp(1.0, 0.8, sunAngle), // B: white → blueish
+		1.0,
+	)
 
 	// Blend in warm rim
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
@@ -294,19 +297,25 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	if ctx.GlobalSunFraction > 0 {
 		// --- Add wide-angle forward scattering near sunrise ---
-		sunViewAngle := math.Acos(Clip(ctx.RayDirection.Dot(ctx.SunDir), -1, 1)) // radians
-		horizonAngle := math.Acos(Clip(ctx.ViewDotNormal, -1, 1))                // radians
+		sunViewAngle := math.Acos(ctx.SunDir.Dot(ctx.RayDirection)) // radians
+		horizonAngle := math.Acos(ctx.ViewDotNormal)                // radians
 
 		sunNearHorizon := Smoothstep(-0.1, 0.1, math.Abs(horizonAngle-math.Pi/2)) // 1 when sun near horizon
 		sunInView := Smoothstep(0.3, 0.0, sunViewAngle)                           // 1 when near sun
 
-		scatteringGlow := math.Pow(sunNearHorizon*sunInView, 1.5) * 0.2 // shaped falloff
-		glowColor := colors.New(1.0, 0.7, 0.4, 1.0)                     // warm orange
+		if sunInView > 0 {
+			scatteringGlow := math.Pow(sunNearHorizon*sunInView, 1.5) * 0.2 // shaped falloff
+			glowColor := colors.New(1.0, 0.7, 0.4, 1.0)                     // warm orange
 
-		out = out.Add(glowColor.Scale(scatteringGlow))
+			out = out.Add(glowColor.Scale(scatteringGlow))
+		}
 	}
 	return out
 
+}
+
+func Lerp(a, b, t float64) float64 {
+	return a + (b-a)*t
 }
 
 func IntersectShadowCylinder(
@@ -464,11 +473,9 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				if hitEarth {
 					// Earth is hit before Sun
 					c = RenderEarthSurface(ctx)
-				} else {
-					// Background (space)
-					c = ApplyAtmosphereOverlay(ctx, c)
 				}
 
+				c = ApplyAtmosphereOverlay(ctx, c)
 				// Add solar disk and glow if visible
 				c = RenderSunDisk(ctx, c)
 

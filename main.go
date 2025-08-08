@@ -30,7 +30,7 @@ func defineFlags() config {
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
 		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
 		alt:  flag.Float64("alt", 8800.0, "Camera altitude in kilometers"),
-		fov:  flag.Float64("fov", 120.0, "Camera field of view in degrees"),
+		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
@@ -145,7 +145,7 @@ func renderImage(lat, lon, alt, fov, tilt float64, size, supersample int, render
 // testMultiView renders 9 views from different longitudes
 func testMultiView(theme render.Theme) error {
 
-	size := 4096
+	size := 512
 	supersample := 3
 	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
 	const outDir = "test_outputs"
@@ -159,7 +159,7 @@ func testMultiView(theme render.Theme) error {
 	}
 
 	for i := 1; i < 100; i++ {
-		lon := float64(i)/10.0 - 125.0 + 6.0
+		lon := float64(i)*20 - 125.0 + 5.0
 		img, err := renderImage(0.0, lon, 8800.0, 60.0, 0.0, size, supersample, renderTime, theme)
 		if err != nil {
 			return fmt.Errorf("render failed at view %d: %w", i, err)
