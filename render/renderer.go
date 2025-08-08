@@ -237,10 +237,12 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	if hitEarth && tEntryEarth > 0 && tEntryEarth < tMax {
 		tMax = tEntryEarth
 	}
+	viewDot := Clip(ctx.ViewDotNormal, 0, 1)
+	rimAmount := math.Pow(1.0-viewDot, 3.0) * 0.3
+	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
+
 	if tMax <= tMin {
-		viewDot := Clip(ctx.ViewDotNormal, 0, 1)
-		rim := math.Pow(1.0-viewDot, 3.0) * 0.6
-		return base.Add(ctx.theme.OuterRim.Scale(rim))
+		return base.Add(rimColor)
 	}
 
 	// Step 3: Shadow intersection
@@ -258,11 +260,8 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 		}
 	}
 
-	viewDot := Clip(ctx.ViewDotNormal, 0, 1)
-	rimAmount := math.Pow(1.0-viewDot, 3.0) * 0.6
-
 	if litLen <= 0 && unlitLen <= 0 {
-		return base.Add(ctx.theme.OuterRim.Scale(rimAmount))
+		return base.Add(rimColor)
 	}
 
 	tMid := (tMin + tMax) * 0.5
@@ -274,19 +273,9 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	litAmount := math.Log(litLen+unlitLen) * avgDensity * rayleighStrength
 	litAmount = Clip(litAmount, 0.0, 1.0)
 
-	// Blend night/day rim
-	// wNight := unlitLen / (litLen + unlitLen + 1e-5)
-
-	// skyColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
-
-	// // Optional: Add warm twilight tint
-	// if rimAmount > 0.9 {
-	// 	twilight := colors.New(0.9, 0.6, 0.8, 1.0) // Warm purple-pink
-	// 	skyColor = skyColor.Mix(twilight, rimAmount-0.9)
-	// }
-
-	// tint := skyColor.Mix(ctx.theme.NightRim, wNight)
-	// return base.Mix(tint, litAmount)
+	if !hitEarth {
+		litAmount = litAmount * 0.5
+	}
 
 	viewToSun := ctx.SunDir.Dot(ctx.RayDirection) // [-1, 1]
 	sunAngle := (1.0 - viewToSun) * 0.5           // 0 near sun, 1 opposite
@@ -303,7 +292,6 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
 
 	// Blend base with sky color, warm rim, and night tint
-	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
 	skyColor = skyColor.Mix(rimColor, rimAmount)
 	tint := skyColor.Mix(ctx.theme.NightRim, wNight)
 	out := base.Mix(tint, litAmount)
@@ -373,8 +361,8 @@ func RenderSunDisk(ctx *RayContext, base colors.Color4) colors.Color4 {
 	sunInView := Smoothstep(0.3, 0.0, sunViewAngle)                           // 1 when near sun
 
 	if sunInView > 0 {
-		scatteringGlow := math.Pow(sunNearHorizon*sunInView, 1.5) * 0.2 // shaped falloff
-		glowColor := colors.New(1.0, 0.7, 0.4, 1.0)                     // warm orange
+		scatteringGlow := math.Pow(sunNearHorizon*sunInView*0.8, 3)
+		glowColor := colors.New(1.0, 0.7, 0.4, 1.0) // warm orange
 
 		base = base.Add(glowColor.Scale(scatteringGlow))
 	}

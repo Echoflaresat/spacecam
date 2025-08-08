@@ -112,6 +112,15 @@ func (c Color4) CompositeOverBlack() Color4 {
 	return Color4{c.R * c.A, c.G * c.A, c.B * c.A, 1.0}
 }
 
+func (c Color4) MulAlpha(a float64) Color4 {
+	return Color4{
+		R: c.R,
+		G: c.G,
+		B: c.B,
+		A: c.A * a,
+	}
+}
+
 func (c Color4) Pow(gamma float64) Color4 {
 	return Color4{
 		R: math.Pow(c.R, gamma),

@@ -86,9 +86,9 @@ func main() {
 	renderTime := parseTimeOrExit(*cfg.timeStr)
 
 	theme := render.Theme{
-		DayRim:   colors.New(0.25, 0.60, 1.00, 2.0),
+		DayRim:   colors.New(0.25, 0.60, 1.00, 1.0),
 		NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
-		OuterRim: colors.New(0.6, 0.9, 1.2, 2.0).Scale(0.4),
+		OuterRim: colors.New(0.6, 0.9, 1.2, 1.0),
 		Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
 		Day:      *cfg.day,
 		Night:    *cfg.night,
@@ -159,7 +159,7 @@ func testMultiView(theme render.Theme) error {
 	}
 
 	for i := 1; i < 100; i++ {
-		lon := float64(i)*20 - 125.0 + 5.0
+		lon := float64(i) * 5
 		img, err := renderImage(0.0, lon, 8800.0, 60.0, 0.0, size, supersample, renderTime, theme)
 		if err != nil {
 			return fmt.Errorf("render failed at view %d: %w", i, err)
