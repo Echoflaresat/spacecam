@@ -19,7 +19,7 @@ type Camera struct {
 
 // NewCamera constructs a camera from geodetic lat/lon (deg), altitude (km),
 // field of view (deg), an additional tilt about the camera's Right axis (deg).
-func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
+func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg, yawDeg float64) Camera {
 	lat := latDeg * math.Pi / 180.0
 	lon := lonDeg * math.Pi / 180.0
 
@@ -44,10 +44,17 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg float64) Camera {
 	right = right.Normalize()
 	up := right.Cross(fwd).Normalize()
 
+	fwd, right, up = tiltCamera(fwd, right, up, 90)
+
+	if yawDeg != 0 {
+		fwd, right, up = yawCamera(fwd, right, up, yawDeg)
+	}
+
+	fwd, right, up = tiltCamera(fwd, right, up, -90)
+
 	if tiltDeg != 0 {
 		fwd, right, up = tiltCamera(fwd, right, up, tiltDeg)
 	}
-
 	return Camera{
 		FOVDeg:     fovDeg,
 		TanHalfFOV: tanHalf,
@@ -74,6 +81,17 @@ func tiltCamera(fwd, right, up vectors.Vec3, tiltDeg float64) (vectors.Vec3, vec
 	fwdNew := rotateVec(fwd, right, c, s).Normalize()
 	upNew := rotateVec(up, right, c, s).Normalize()
 	return fwdNew, right, upNew
+}
+
+// yawCamera rotates forward/right around the Up axis by yawDeg.
+// This is a left-right (horizontal) camera pan.
+func yawCamera(fwd, right, up vectors.Vec3, yawDeg float64) (vectors.Vec3, vectors.Vec3, vectors.Vec3) {
+	theta := yawDeg * math.Pi / 180.0
+	c, s := math.Cos(theta), math.Sin(theta)
+
+	fwdNew := rotateVec(fwd, up, c, s).Normalize()
+	rightNew := rotateVec(right, up, c, s).Normalize()
+	return fwdNew, rightNew, up
 }
 
 // ComputeRay returns the normalized viewing direction for pixel (i,j)

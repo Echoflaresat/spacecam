@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/png"
 	"log"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,7 +18,7 @@ import (
 
 type config struct {
 	lat, lon, alt      *float64
-	fov, tilt          *float64
+	fov, tilt, yaw     *float64
 	size, supersample  *int
 	out                *string
 	day, night, clouds *string
@@ -28,9 +29,10 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
+		lon:  flag.Float64("lon", 40.0, "Camera longitude in degrees"),
 		alt:  flag.Float64("alt", 8800.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
+		yaw:  flag.Float64("yaw", 0.0, "Camera yaw in degrees"),
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
@@ -55,7 +57,7 @@ Usage:
 
 `, os.Args[0])
 
-	printGroup("Camera Options", []string{"lat", "lon", "alt", "fov", "tilt"})
+	printGroup("Camera Options", []string{"lat", "lon", "alt", "fov", "tilt", "yaw"})
 	printGroup("Rendering Options", []string{"size", "ss", "time"})
 	printGroup("Assets", []string{"day", "night", "clouds"})
 	printGroup("Output", []string{"out"})
@@ -95,9 +97,7 @@ func main() {
 		Clouds:   *cfg.clouds,
 	}
 
-	testMultiView(theme)
-
-	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.size, *cfg.supersample, renderTime, theme)
+	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw, *cfg.size, *cfg.supersample, renderTime, theme)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -105,6 +105,8 @@ func main() {
 	if err := writePNG(*cfg.out, img); err != nil {
 		log.Fatalf("Failed to write PNG: %v", err)
 	}
+
+	// testMultiView(theme)
 
 }
 
@@ -129,9 +131,9 @@ func writePNG(path string, img image.Image) error {
 }
 
 // renderImage renders the Earth view and returns the image.
-func renderImage(lat, lon, alt, fov, tilt float64, size, supersample int, renderTime time.Time, theme render.Theme) (image.Image, error) {
+func renderImage(lat, lon, alt, fov, tilt, yaw float64, size, supersample int, renderTime time.Time, theme render.Theme) (image.Image, error) {
 	sunDir := earth.SunDirectionECEF(renderTime)
-	camera := render.NewCamera(lat, lon, alt, fov, tilt)
+	camera := render.NewCamera(lat, lon, alt, fov, tilt, yaw)
 
 	return render.RenderScene(
 		camera,
@@ -145,7 +147,7 @@ func renderImage(lat, lon, alt, fov, tilt float64, size, supersample int, render
 // testMultiView renders 9 views from different longitudes
 func testMultiView(theme render.Theme) error {
 
-	size := 512
+	size := 640
 	supersample := 3
 	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
 	const outDir = "test_outputs"
@@ -159,8 +161,13 @@ func testMultiView(theme render.Theme) error {
 	}
 
 	for i := 1; i < 100; i++ {
-		lon := float64(i) * 5
-		img, err := renderImage(0.0, lon, 8800.0, 60.0, 0.0, size, supersample, renderTime, theme)
+
+		lat := rand.Float64()*180 - 90
+		lon := rand.Float64()*360 - 180
+		tilt := 40.0 + rand.Float64()*40 - 20
+		yaw := rand.Float64()*360 - 180
+
+		img, err := renderImage(lat, lon, 880.0, 60.0, tilt, yaw, size, supersample, renderTime, theme)
 		if err != nil {
 			return fmt.Errorf("render failed at view %d: %w", i, err)
 		}

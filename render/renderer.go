@@ -282,17 +282,13 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	// Hue shift: warm when near sun, cool away
 	skyColor := colors.New(
-		Lerp(1.0, 0.6, sunAngle), // R: white → neutral warm
-		Lerp(1.0, 0.7, sunAngle), // G: white → slightly greenish
-		Lerp(1.0, 0.8, sunAngle), // B: white → blueish
-		1.0,
+		Lerp(1.0, ctx.theme.DayRim.R, sunAngle), // R: white → neutral warm
+		Lerp(1.0, ctx.theme.DayRim.G, sunAngle), // G: white → slightly greenish
+		Lerp(1.0, ctx.theme.DayRim.B, sunAngle), // B: white → blueish
+		ctx.theme.DayRim.A,
 	)
 
-	// // Blend in warm rim
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
-
-	// Blend base with sky color, warm rim, and night tint
-	skyColor = skyColor.Mix(rimColor, rimAmount)
 	tint := skyColor.Mix(ctx.theme.NightRim, wNight)
 	out := base.Mix(tint, litAmount)
 
@@ -443,7 +439,8 @@ func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {
 
 // Update RaytraceScenePixels to apply tone mapping and adjusted saturation
 func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
-	W, H := outSize, outSize
+	ar := 9.0 / 16.0
+	W, H := outSize, int(float64(outSize)*ar)
 	offsets := GenerateSupersamplingOffsets(supersampling)
 	N := float64(len(offsets))
 
@@ -465,7 +462,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 			colorAccum := colors.Color4{}
 			for _, off := range offsets {
 				dx, dy := off[0], off[1]
-				rayDir := camera.ComputeRay(float64(x)+dx, float64(y)+dy, W, H)
+				rayDir := camera.ComputeRay(float64(x)+dx, (float64(y)+dy)*ar, W, H)
 				ctx.SetRayDirection(rayDir)
 
 				hitEarth := ctx.TEarth > 0
