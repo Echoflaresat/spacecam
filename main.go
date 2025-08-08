@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/echoflaresat/spacecam/colors"
@@ -27,12 +28,12 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 295.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
-		fov:  flag.Float64("fov", 80.0, "Camera field of view in degrees"),
+		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
+		alt:  flag.Float64("alt", 8800.0, "Camera altitude in kilometers"),
+		fov:  flag.Float64("fov", 120.0, "Camera field of view in degrees"),
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
-		size:        flag.Int("size", 640, "Output image size (width/height in pixels)"),
+		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
 		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
 
@@ -72,6 +73,7 @@ func printGroup(title string, keys []string) {
 }
 
 func main() {
+
 	cfg := defineFlags()
 	flag.Usage = printHelp
 	flag.Parse()
@@ -81,37 +83,21 @@ func main() {
 		return
 	}
 
-	// Parse time
-	var renderTime time.Time
-	var err error
-	if *cfg.timeStr != "" {
-		renderTime, err = time.Parse(time.RFC3339, *cfg.timeStr)
-		if err != nil {
-			log.Fatalf("Invalid time format: %v", err)
-		}
-	} else {
-		renderTime = time.Now()
+	renderTime := parseTimeOrExit(*cfg.timeStr)
+
+	theme := render.Theme{
+		DayRim:   colors.New(0.25, 0.60, 1.00, 2.0),
+		NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
+		OuterRim: colors.New(0.6, 0.9, 1.2, 2.0).Scale(0.4),
+		Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
+		Day:      *cfg.day,
+		Night:    *cfg.night,
+		Clouds:   *cfg.clouds,
 	}
 
-	renderTime, _ = time.Parse(time.RFC3339, "2025-08-08T05:45:00Z")
-	sunDir := earth.SunDirectionECEF(renderTime)
-	camera := render.NewCamera(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt)
+	testMultiView(theme)
 
-	img, err := render.RenderScene(
-		camera,
-		sunDir,
-		*cfg.size,
-		*cfg.supersample,
-		render.Theme{
-			DayRim:   colors.New(0.25, 0.60, 1.00, 2.0), // Slightly deeper sky blue
-			NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
-			OuterRim: colors.New(0.6, 0.9, 1.2, 2.0).Scale(0.4), // Softer outer glow
-			Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
-			Day:      *cfg.day,
-			Night:    *cfg.night,
-			Clouds:   *cfg.clouds,
-		},
-	)
+	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.size, *cfg.supersample, renderTime, theme)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -119,6 +105,18 @@ func main() {
 	if err := writePNG(*cfg.out, img); err != nil {
 		log.Fatalf("Failed to write PNG: %v", err)
 	}
+
+}
+
+func parseTimeOrExit(timeStr string) time.Time {
+	if timeStr == "" {
+		return time.Now()
+	}
+	t, err := time.Parse(time.RFC3339, timeStr)
+	if err != nil {
+		log.Fatalf("Invalid time format: %v", err)
+	}
+	return t
 }
 
 func writePNG(path string, img image.Image) error {
@@ -128,4 +126,54 @@ func writePNG(path string, img image.Image) error {
 	}
 	defer f.Close()
 	return (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(f, img)
+}
+
+// renderImage renders the Earth view and returns the image.
+func renderImage(lat, lon, alt, fov, tilt float64, size, supersample int, renderTime time.Time, theme render.Theme) (image.Image, error) {
+	sunDir := earth.SunDirectionECEF(renderTime)
+	camera := render.NewCamera(lat, lon, alt, fov, tilt)
+
+	return render.RenderScene(
+		camera,
+		sunDir,
+		size,
+		supersample,
+		theme,
+	)
+}
+
+// testMultiView renders 9 views from different longitudes
+func testMultiView(theme render.Theme) error {
+
+	size := 4096
+	supersample := 3
+	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
+	const outDir = "test_outputs"
+
+	// Clean + recreate output dir
+	if err := os.RemoveAll(outDir); err != nil {
+		return fmt.Errorf("failed to remove test_outputs: %w", err)
+	}
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create test_outputs: %w", err)
+	}
+
+	for i := 1; i < 100; i++ {
+		lon := float64(i)/10.0 - 125.0 + 6.0
+		img, err := renderImage(0.0, lon, 8800.0, 60.0, 0.0, size, supersample, renderTime, theme)
+		if err != nil {
+			return fmt.Errorf("render failed at view %d: %w", i, err)
+		}
+
+		outPath := filepath.Join(outDir, fmt.Sprintf("test_view_%02d.png", i))
+		if err := writePNG(outPath, img); err != nil {
+			return fmt.Errorf("failed to write %s: %w", outPath, err)
+		}
+		if err := writePNG("earth_view.png", img); err != nil {
+			return fmt.Errorf("failed to write %s: %w", outPath, err)
+		}
+		fmt.Printf("Wrote %s\n", outPath)
+	}
+
+	return nil
 }

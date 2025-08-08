@@ -19,6 +19,7 @@ type RayContext struct {
 	SurfaceNormal     vectors.Vec3
 	RimLightFactor    float64
 	SunLightIntensity float64
+	GlobalSunFraction float64
 	ViewDotNormal     float64
 	theme             Theme
 	TexDay            Texture

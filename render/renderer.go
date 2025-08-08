@@ -276,19 +276,37 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	litAmount := math.Log(litLen+unlitLen) * avgDensity * rayleighStrength
 	litAmount = Clip(litAmount, 0.0, 1.0)
 
-	// Blend night/day rim
+	viewToSun := ctx.SunDir.Dot(ctx.RayDirection) // [-1, 1]
+	sunAngle := (1.0 - viewToSun) * 0.5           // 0 near sun, 1 opposite
+
+	// Hue shift: warm when near sun, cool away
+	skyColor := colors.New(0.5+0.5*sunAngle, 0.6, 1.0, 1.0) // rough blue→pink→orange transition
+
+	// Blend in warm rim
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
 
-	skyColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
+	// Blend base with sky color, warm rim, and night tint
+	skyColor = skyColor.Mix(ctx.theme.NightRim, wNight)
+	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
+	skyColor = skyColor.Mix(rimColor, rimAmount)
 
-	// Optional: Add warm twilight tint
-	if rimAmount > 0.9 {
-		twilight := colors.New(0.9, 0.6, 0.8, 1.0) // Warm purple-pink
-		skyColor = skyColor.Mix(twilight, rimAmount-0.9)
+	out := base.Mix(skyColor, litAmount)
+
+	if ctx.GlobalSunFraction > 0 {
+		// --- Add wide-angle forward scattering near sunrise ---
+		sunViewAngle := math.Acos(Clip(ctx.RayDirection.Dot(ctx.SunDir), -1, 1)) // radians
+		horizonAngle := math.Acos(Clip(ctx.ViewDotNormal, -1, 1))                // radians
+
+		sunNearHorizon := Smoothstep(-0.1, 0.1, math.Abs(horizonAngle-math.Pi/2)) // 1 when sun near horizon
+		sunInView := Smoothstep(0.3, 0.0, sunViewAngle)                           // 1 when near sun
+
+		scatteringGlow := math.Pow(sunNearHorizon*sunInView, 1.5) * 0.2 // shaped falloff
+		glowColor := colors.New(1.0, 0.7, 0.4, 1.0)                     // warm orange
+
+		out = out.Add(glowColor.Scale(scatteringGlow))
 	}
+	return out
 
-	tint := skyColor.Mix(ctx.theme.NightRim, wNight)
-	return base.Mix(tint, litAmount)
 }
 
 func IntersectShadowCylinder(
@@ -334,7 +352,17 @@ func IntersectShadowCylinder(
 	return true, entry, exit
 }
 
-func RenderSunDisk(cameraPos, rayDir, sunDir vectors.Vec3, base colors.Color4) colors.Color4 {
+func RenderSunDisk(ctx *RayContext, base colors.Color4) colors.Color4 {
+
+	if ctx.GlobalSunFraction == 0.0 {
+		return base
+	}
+
+	cameraPos, rayDir, sunDir := ctx.Origin, ctx.RayDirection, ctx.SunDir
+
+	// Color of the sun (adjustable)
+	sunColor := colors.New(1.0, 1.0, 1.0, 1.0)
+
 	const sunAngularRadius = 0.0092 / 2            // radians
 	const glowAngularRadius = sunAngularRadius * 5 // soft edge
 	const earthRadius = earth.Radius
@@ -359,13 +387,49 @@ func RenderSunDisk(cameraPos, rayDir, sunDir vectors.Vec3, base colors.Color4) c
 
 	// Compute intensity using smooth radial falloff
 	t := Smoothstep(glowAngularRadius, sunAngularRadius, theta)
-	intensity := math.Pow(t, 2.0)
-
-	// Color of the sun (adjustable)
-	sunColor := colors.New(1.0, 0.95, 0.9, 1.0)
+	sunIntensity := math.Pow(t, 2.0)
 
 	// Blend the glow onto the base
-	return base.Mix(sunColor, intensity)
+	return base.Mix(sunColor, sunIntensity)
+}
+
+func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {
+	sunDistance := 149_597_870.7 // km
+	sunRadius := 695_700.0       // km
+
+	// Angular radii
+	r := camPos.Norm()
+	thetaE := math.Asin(earth.Radius / r)
+	thetaS := math.Asin(sunRadius / sunDistance)
+
+	// Angular separation
+	cosAngle := camPos.Normalize().Dot(sunDir.Scale(-1).Normalize())
+	d := math.Acos(Clip(cosAngle, -1.0, 1.0)) // angle between Earth center and Sun center in radians
+
+	// Convert angular radii to linear radii on unit sphere
+	RE := thetaE
+	RS := thetaS
+
+	if d >= RE+RS {
+		return 1.0 // Fully visible
+	}
+	if d <= math.Abs(RE-RS) {
+		if RE > RS {
+			return 0.0 // Fully blocked
+		}
+		return 1.0 // Sun entirely in front of Earth (unrealistic)
+	}
+
+	// Circle-circle overlap area on unit disk
+	// (normalized to return fraction of the *sun's* area that is visible)
+	part1 := RS * RS * math.Acos((d*d+RS*RS-RE*RE)/(2*d*RS))
+	part2 := RE * RE * math.Acos((d*d+RE*RE-RS*RS)/(2*d*RE))
+	part3 := 0.5 * math.Sqrt((-d+RS+RE)*(d+RS-RE)*(d-RS+RE)*(d+RS+RE))
+
+	areaVisible := math.Pi*RS*RS - (part1 + part2 - part3)
+	visibleFraction := Clip(areaVisible/(math.Pi*RS*RS), 0.0, 1.0)
+
+	return visibleFraction
 }
 
 // Update RaytraceScenePixels to apply tone mapping and adjusted saturation
@@ -377,6 +441,10 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 	progressMilestone := 0
 
 	img := image.NewNRGBA(image.Rect(0, 0, W, H))
+
+	ctx.GlobalSunFraction = SunVisibleFraction(camera.Position, ctx.SunDir)
+
+	println(ctx.GlobalSunFraction)
 	for y := 0; y < H; y++ {
 		progress := (y * 100) / H
 		if progress >= progressMilestone {
@@ -402,7 +470,7 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				}
 
 				// Add solar disk and glow if visible
-				c = RenderSunDisk(ctx.Origin, ctx.RayDirection, ctx.SunDir, c)
+				c = RenderSunDisk(ctx, c)
 
 				colorAccum = colorAccum.Add(c)
 			}
