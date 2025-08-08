@@ -27,10 +27,10 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 880.0, "Camera altitude in kilometers"),
+		lon:  flag.Float64("lon", 295.0, "Camera longitude in degrees"),
+		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 80.0, "Camera field of view in degrees"),
-		tilt: flag.Float64("tilt", 40.0, "Camera tilt in degrees"),
+		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 640, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
@@ -93,6 +93,7 @@ func main() {
 		renderTime = time.Now()
 	}
 
+	renderTime, _ = time.Parse(time.RFC3339, "2025-08-08T05:45:00Z")
 	sunDir := earth.SunDirectionECEF(renderTime)
 	camera := render.NewCamera(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt)
 
@@ -102,7 +103,6 @@ func main() {
 		*cfg.size,
 		*cfg.supersample,
 		render.Theme{
-			// DayRim:   colors.New(0.529, 0.808, 0.980, 0.5),
 			DayRim:   colors.New(0.25, 0.60, 1.00, 2.0), // Slightly deeper sky blue
 			NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
 			OuterRim: colors.New(0.6, 0.9, 1.2, 2.0).Scale(0.4), // Softer outer glow

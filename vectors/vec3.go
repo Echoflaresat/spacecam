@@ -7,6 +7,10 @@ type Vec3 struct {
 	X, Y, Z float64
 }
 
+func Zero() Vec3 {
+	return Vec3{X: 0.0, Y: 0.0, Z: 0.0}
+}
+
 // Add returns v + o.
 func (v Vec3) Add(o Vec3) Vec3 {
 	return Vec3{v.X + o.X, v.Y + o.Y, v.Z + o.Z}

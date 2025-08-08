@@ -219,8 +219,8 @@ func RenderScene(
 // ApplyAtmosphereOverlay simulates atmospheric scattering along the view ray using ray tracing.
 // It accounts for Rayleigh scattering, Earth's shadow, backlighting, and rays passing through thin air.
 func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
-	const H = 55            // scale height (km)
-	const maxHeight = 120.0 // max atmosphere extent (km)
+	const H = 55.0
+	const maxHeight = 120.0
 	const rayleighStrength = 0.2
 
 	atmoRadius := earth.Radius + maxHeight
@@ -234,65 +234,61 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	// Step 2: Ray-ground intersection
 	hitEarth, tEntryEarth, _ := intersectSphereFull(ctx.Origin, ctx.RayDirection, earth.Radius)
 
-	// Clip to visible atmosphere
 	tMin := math.Max(0, tEntryAtmo)
 	tMax := tExitAtmo
 	if hitEarth && tEntryEarth > 0 && tEntryEarth < tMax {
 		tMax = tEntryEarth
 	}
 	if tMax <= tMin {
-		return base
+		viewDot := Clip(ctx.ViewDotNormal, 0, 1)
+		rim := math.Pow(1.0-viewDot, 3.0) * 0.6
+		return base.Add(ctx.theme.OuterRim.Scale(rim))
 	}
 
 	// Step 3: Shadow intersection
 	hitShadow, tShadowEntry, tShadowExit := IntersectShadowCylinder(ctx.Origin, ctx.RayDirection, ctx.SunDir, earth.Radius)
 
-	// Step 4: Compute total lit length
 	litLen := tMax - tMin
 	unlitLen := 0.0
-
 	if hitShadow {
 		shadowStart := math.Max(tMin, tShadowEntry)
 		shadowEnd := math.Min(tMax, tShadowExit)
 		if shadowEnd > shadowStart {
-			litLen -= (shadowEnd - shadowStart)
-			unlitLen += (shadowEnd - shadowStart)
+			shadowLen := shadowEnd - shadowStart
+			litLen -= shadowLen
+			unlitLen += shadowLen
 		}
 	}
 
-	// Invert and square to exaggerate rim region
-	viewAngle := Clip(ctx.ViewDotNormal, 0.0, 1.0)
-	rimAmount := math.Pow(1.0-Clip(viewAngle, 0.0, 1.0), 3.0) * 0.6
+	viewDot := Clip(ctx.ViewDotNormal, 0, 1)
+	rimAmount := math.Pow(1.0-viewDot, 3.0) * 0.6
 
 	if litLen <= 0 && unlitLen <= 0 {
 		return base.Add(ctx.theme.OuterRim.Scale(rimAmount))
 	}
 
-	// Step 5: Estimate average altitude
 	tMid := (tMin + tMax) * 0.5
 	midPoint := ctx.Origin.Add(ctx.RayDirection.Scale(tMid))
 	avgHeight := midPoint.Norm() - earth.Radius
-
-	// Fade stronger near surface, weaker at high altitudes
-
 	avgDensity := math.Exp(-avgHeight / H)
 
+	// Light amount modulated by density
 	litAmount := math.Log(litLen+unlitLen) * avgDensity * rayleighStrength
 	litAmount = Clip(litAmount, 0.0, 1.0)
 
+	// Blend night/day rim
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
-	wNight = math.Pow(wNight, 0.5)
 
 	skyColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
 
+	// Optional: Add warm twilight tint
 	if rimAmount > 0.9 {
-		twilight := colors.New(0.9, 0.6, 0.8, 1) // warm purple
+		twilight := colors.New(0.9, 0.6, 0.8, 1.0) // Warm purple-pink
 		skyColor = skyColor.Mix(twilight, rimAmount-0.9)
 	}
 
-	tintColor := skyColor.Mix(ctx.theme.NightRim, wNight)
-
-	return base.Mix(tintColor, litAmount)
+	tint := skyColor.Mix(ctx.theme.NightRim, wNight)
+	return base.Mix(tint, litAmount)
 }
 
 func IntersectShadowCylinder(
@@ -338,6 +334,40 @@ func IntersectShadowCylinder(
 	return true, entry, exit
 }
 
+func RenderSunDisk(cameraPos, rayDir, sunDir vectors.Vec3, base colors.Color4) colors.Color4 {
+	const sunAngularRadius = 0.0092 / 2            // radians
+	const glowAngularRadius = sunAngularRadius * 5 // soft edge
+	const earthRadius = earth.Radius
+
+	// Check if looking toward the sun
+	cosTheta := rayDir.Dot(sunDir)
+	if cosTheta <= 0 {
+		return base // facing away
+	}
+
+	// Check if Earth is in the way
+	hitEarth, tEarth := intersectSphere(cameraPos, rayDir, vectors.Vec3{}, earthRadius)
+	if hitEarth && tEarth > 0 {
+		return base // Earth blocks the sun
+	}
+
+	// Compute angular distance to sun center
+	theta := math.Acos(cosTheta)
+	if theta > glowAngularRadius {
+		return base // too far off-center
+	}
+
+	// Compute intensity using smooth radial falloff
+	t := Smoothstep(glowAngularRadius, sunAngularRadius, theta)
+	intensity := math.Pow(t, 2.0)
+
+	// Color of the sun (adjustable)
+	sunColor := colors.New(1.0, 0.95, 0.9, 1.0)
+
+	// Blend the glow onto the base
+	return base.Mix(sunColor, intensity)
+}
+
 // Update RaytraceScenePixels to apply tone mapping and adjusted saturation
 func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
 	W, H := outSize, outSize
@@ -361,12 +391,18 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 				rayDir := camera.ComputeRay(float64(x)+dx, float64(y)+dy, W, H)
 				ctx.SetRayDirection(rayDir)
 
+				hitEarth := ctx.TEarth > 0
 				c := colors.Black()
-				if ctx.T > 0 {
+				if hitEarth {
+					// Earth is hit before Sun
 					c = RenderEarthSurface(ctx)
 				} else {
+					// Background (space)
 					c = ApplyAtmosphereOverlay(ctx, c)
 				}
+
+				// Add solar disk and glow if visible
+				c = RenderSunDisk(ctx.Origin, ctx.RayDirection, ctx.SunDir, c)
 
 				colorAccum = colorAccum.Add(c)
 			}

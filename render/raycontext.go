@@ -14,7 +14,7 @@ type RayContext struct {
 	AltitudeKm        float64
 	RayDirection      vectors.Vec3
 	DistToCenter      float64
-	T                 float64
+	TEarth            float64
 	HitPoint          vectors.Vec3
 	SurfaceNormal     vectors.Vec3
 	RimLightFactor    float64
@@ -68,10 +68,11 @@ func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	}
 
 	// Ray–sphere intersection with Earth (spherical).
-	c.T = intersectSphere(c.Origin, c.RayDirection, earth.Radius)
+	hit, t := intersectSphere(c.Origin, c.RayDirection, vectors.Zero(), earth.Radius)
+	c.TEarth = t
 
-	if c.T >= 0 {
-		c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.T))
+	if hit && c.TEarth >= 0 {
+		c.HitPoint = c.Origin.Add(c.RayDirection.Scale(c.TEarth))
 		c.SurfaceNormal = c.HitPoint.Normalize()
 		c.SunLightIntensity = c.SurfaceNormal.Dot(c.SunDir)
 		c.ViewDotNormal = -c.SurfaceNormal.Dot(c.RayDirection)
@@ -87,8 +88,8 @@ func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 	c.InsideAtmosphere = hitsAtmo
 	if hitsAtmo {
 		// Clamp exit point to before planet surface
-		if c.T > 0 && t1 > c.T {
-			t1 = c.T
+		if c.TEarth > 0 && t1 > c.TEarth {
+			t1 = c.TEarth
 		}
 		c.AtmosphereEntryT = math.Max(t0, 0.0)
 		c.AtmosphereExitT = t1
@@ -99,17 +100,17 @@ func (c *RayContext) SetRayDirection(rayDirection vectors.Vec3) {
 
 }
 
-// IntersectEarth calculates the intersection of a ray (O + t*D) with a sphere of radius r.
-// Returns the closest positive t, or -1.0 if there is no intersection.
-func intersectSphere(O, D vectors.Vec3, r float64) float64 {
-	// b = 2*O·D, c = O·O - r^2, solve t^2 + b t + c = 0
-	OdotD := O.Dot(D)
-	b := 2.0 * OdotD
-	c := O.Dot(O) - r*r
+func intersectSphere(O, D, C vectors.Vec3, r float64) (bool, float64) {
+	// Shift into sphere-local coordinates
+	L := O.Sub(C)
+
+	// Solve t^2 + 2*(L·D)t + (L·L - r^2) = 0
+	b := 2.0 * L.Dot(D)
+	c := L.Dot(L) - r*r
 
 	discriminant := b*b - 4.0*c
 	if discriminant < 0 {
-		return -1.0
+		return false, 0
 	}
 
 	sqrtDisc := math.Sqrt(discriminant)
@@ -118,17 +119,17 @@ func intersectSphere(O, D vectors.Vec3, r float64) float64 {
 
 	if t1 > 0 && t2 > 0 {
 		if t1 < t2 {
-			return t1
+			return true, t1
 		}
-		return t2
+		return true, t2
 	}
 	if t1 > 0 {
-		return t1
+		return true, t1
 	}
 	if t2 > 0 {
-		return t2
+		return true, t2
 	}
-	return -1.0
+	return false, 0
 }
 
 func intersectSphereFull(origin, dir vectors.Vec3, radius float64) (bool, float64, float64) {
