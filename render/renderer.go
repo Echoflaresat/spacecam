@@ -219,7 +219,7 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	const H = 55.0
 	const rayleighStrength = 0.2
 
-	if !ctx.HitsAtmo {
+	if !ctx.HitsAtmosphere {
 		return base
 	}
 
@@ -228,7 +228,7 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
 
 	// Step 3: Shadow intersection
-	hitShadow, tShadowEntry, tShadowExit := IntersectShadowCylinder(ctx.Origin, ctx.RayDir, ctx.SunDir, earth.Radius)
+	hitShadow, tShadowEntry, tShadowExit := intersectHalfCylinderForward(ctx.Origin, ctx.RayDir, ctx.SunDir.Scale(-1), earth.Radius)
 
 	litLen := ctx.AtmosphereExitT - ctx.AtmosphereEntryT
 	unlitLen := 0.0
@@ -295,49 +295,6 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 func Lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
-}
-
-func IntersectShadowCylinder(
-	rayOrigin, rayDir, sunDir vectors.Vec3,
-	earthRadius float64,
-) (bool, float64, float64) {
-	V := sunDir.Scale(-1) // Axis direction
-	CO := rayOrigin
-
-	// Vector from cylinder origin to ray origin
-
-	// Project ray and offset onto plane perpendicular to V
-	dDotV := rayDir.Dot(V)
-	dPerp := rayDir.Sub(V.Scale(dDotV))
-
-	coDotV := CO.Dot(V)
-	coPerp := CO.Sub(V.Scale(coDotV))
-
-	a := dPerp.Dot(dPerp)
-	b := 2 * dPerp.Dot(coPerp)
-	c := coPerp.Dot(coPerp) - earthRadius*earthRadius
-
-	discriminant := b*b - 4*a*c
-	if discriminant < 0 || a == 0 {
-		return false, 0, 0
-	}
-
-	sqrtD := math.Sqrt(discriminant)
-	t0 := (-b - sqrtD) / (2 * a)
-	t1 := (-b + sqrtD) / (2 * a)
-
-	if t1 < 0 {
-		return false, 0, 0
-	}
-
-	M1 := rayOrigin.Add(rayDir.Scale(t0))
-	if M1.Dot(V) < 0 {
-		return false, 0, 0
-	}
-
-	entry := math.Max(0, t0)
-	exit := t1
-	return true, entry, exit
 }
 
 func RenderSunDisk(ctx *RayContext, base colors.Color4) colors.Color4 {
