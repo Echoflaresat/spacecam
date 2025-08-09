@@ -3,12 +3,26 @@ package render
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"math"
+	"runtime"
 
 	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
 	"github.com/echoflaresat/spacecam/vectors"
+	"golang.org/x/sync/errgroup"
 )
+
+type pixelJob struct {
+	X int
+	Y int
+}
+
+type pixelResult struct {
+	X    int
+	Y    int
+	RGBA color.NRGBA
+}
 
 var DayRim = colors.New(0.25, 0.60, 1.00, 1.0)
 var NightRim = colors.New(0.05, 0.07, 0.20, 0.5)
@@ -199,17 +213,8 @@ func RenderScene(
 
 	origin := camera.Position
 
-	ctx := NewRayContext(
-		origin,
-		sunDir,
-		theme,
-		texDay,
-		texNight,
-		texClouds,
-	)
-
 	// Produce an RGB buffer (H*W*3)
-	img := RaytraceScenePixels(ctx, camera, outSize, supersampling)
+	img := RaytraceScenePixels(origin, sunDir, theme, texDay, texNight, texClouds, camera, outSize, supersampling, -1)
 	println("done")
 	return img, nil
 }
@@ -394,60 +399,149 @@ func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {
 	return visibleFraction
 }
 
-// Update RaytraceScenePixels to apply tone mapping and adjusted saturation
-func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling int) *image.NRGBA {
-	ar := 1.0 // 9.0 / 16.0
-	W, H := outSize, int(float64(outSize)*ar)
-	offsets := GenerateSupersamplingOffsets(supersampling)
-	N := float64(len(offsets))
-
-	progressMilestone := 0
-
-	img := image.NewNRGBA(image.Rect(0, 0, W, H))
-
-	ctx.GlobalSunFraction = SunVisibleFraction(camera.Position, ctx.SunDir)
-
-	for y := 0; y < H; y++ {
-		progress := (y * 100) / H
-		if progress >= progressMilestone {
-			fmt.Printf(" %3d%% ", progressMilestone)
-			progressMilestone += 10
-		}
-
-		for x := 0; x < W; x++ {
-			colorAccum := colors.Color4{}
-			for _, off := range offsets {
-				dx, dy := off[0], off[1]
-				rayDir := camera.ComputeRay(float64(x)+dx, (float64(y)+dy)*ar, W, H)
-				ctx.SetRayDirection(rayDir)
-
-				hitEarth := ctx.TEarth > 0
-				c := colors.Black()
-				if hitEarth {
-					// Earth is hit before Sun
-					c = RenderEarthSurface(ctx)
-				}
-
-				c = ApplyAtmosphereOverlay(ctx, c)
-				// Add solar disk and glow if visible
-				c = RenderSunDisk(ctx, c)
-
-				colorAccum = colorAccum.Add(c)
-			}
-
-			colorOut := colorAccum.Scale(1.0 / N)
-
-			// Warmth
-			colorOut = colorOut.Mul(ctx.theme.Warm)
-
-			// Gentle saturation boost
-			colorOut = colorOut.BoostSaturation(1.5)
-
-			colorOut = colorOut.CompositeOverBlack()
-			img.SetNRGBA(x, y, colorOut.ToNRGBA())
-		}
+func RaytraceScenePixels(
+	origin vectors.Vec3,
+	sunDir vectors.Vec3,
+	theme Theme,
+	texDay Texture,
+	texNight Texture,
+	texClouds Texture,
+	camera Camera,
+	outSize,
+	supersampling,
+	numWorkers int,
+) *image.NRGBA {
+	if numWorkers <= 0 {
+		numWorkers = runtime.GOMAXPROCS(0)
 	}
 
-	fmt.Printf("100%% complete\n")
+	ar := 1.0 // keep 9.0/16.0 if you switch aspect later
+	W, H := outSize, int(float64(outSize)*ar)
+	offsets := GenerateSupersamplingOffsets(supersampling)
+
+	img := image.NewNRGBA(image.Rect(0, 0, W, H))
+	jobs := make(chan pixelJob, 1024)
+	results := make(chan pixelResult, 1024)
+
+	g := errgroup.Group{}
+
+	// feeder (closes jobs)
+	g.Go(func() error {
+		return runFeeder(W, H, jobs)
+	})
+
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			return runWorker(
+				origin, sunDir, theme, texDay, texNight, texClouds,
+				camera, W, H, ar, offsets,
+				jobs, results)
+		})
+	}
+
+	// writer (exits when results is closed)
+	g.Go(func() error {
+		return runWriter(img, results, W, H)
+	})
+
+	if err := g.Wait(); err != nil {
+		fmt.Printf("render aborted: %v\n", err)
+		return img
+	}
 	return img
+}
+
+func runFeeder(W, H int, jobs chan<- pixelJob) error {
+	defer close(jobs)
+	for y := 0; y < H; y++ {
+		for x := 0; x < W; x++ {
+			jobs <- pixelJob{X: x, Y: y}
+		}
+	}
+	return nil
+}
+
+func runWorker(
+	origin vectors.Vec3,
+	sunDir vectors.Vec3,
+	theme Theme,
+	texDay Texture,
+	texNight Texture,
+	texClouds Texture,
+	camera Camera,
+	W, H int,
+	ar float64,
+	offsets [][2]float64,
+	jobs <-chan pixelJob,
+	results chan<- pixelResult,
+) error {
+	rc := NewRayContext(origin, sunDir, theme, texDay, texNight, texClouds)
+	rc.GlobalSunFraction = SunVisibleFraction(camera.Position, rc.SunDir)
+
+	for {
+		job, ok := <-jobs
+		if !ok {
+			break
+		}
+		rgba := renderPixel(rc, camera, job.X, job.Y, W, H, ar, offsets)
+		results <- pixelResult{X: job.X, Y: job.Y, RGBA: rgba}
+	}
+	return nil
+}
+
+func runWriter(
+	img *image.NRGBA,
+	results <-chan pixelResult,
+	W, H int,
+) error {
+	completed := int64(0)
+	total := int64(W * H)
+	nextMileStone := 0
+	for completed < total {
+		res := <-results
+		img.SetNRGBA(res.X, res.Y, res.RGBA)
+		completed += 1
+		progress := (completed * 100) / total
+		if int(progress) >= nextMileStone {
+			fmt.Printf(" %3d%% ", nextMileStone)
+			nextMileStone += 10
+		}
+	}
+	return nil
+}
+
+func renderPixel(ctx *RayContext, camera Camera, x, y, W, H int, ar float64, offsets [][2]float64) color.NRGBA {
+	colorAccum := colors.Color4{}
+
+	for _, off := range offsets {
+		dx, dy := off[0], off[1]
+
+		// If ComputeRay or SetRayDirection read camera only, it's safe.
+		// If they mutate shared state, clone/guard similarly.
+		rayDir := camera.ComputeRay(float64(x)+dx, (float64(y)+dy)*ar, W, H)
+
+		ctx.SetRayDirection(rayDir)
+
+		hitEarth := ctx.TEarth > 0
+		c := colors.Black()
+		if hitEarth {
+			c = RenderEarthSurface(ctx)
+		}
+
+		c = ApplyAtmosphereOverlay(ctx, c)
+		c = RenderSunDisk(ctx, c)
+
+		colorAccum = colorAccum.Add(c)
+	}
+
+	colorOut := colorAccum.Scale(1.0 / float64(len(offsets)))
+
+	// Warmth
+	colorOut = colorOut.Mul(ctx.theme.Warm)
+
+	// Gentle saturation boost
+	colorOut = colorOut.BoostSaturation(1.5)
+
+	colorOut = colorOut.CompositeOverBlack()
+	return colorOut.ToNRGBA()
 }
