@@ -51,16 +51,19 @@ you need one without bathmetry and topology, just the plain texture.
 
 - [Clouds](https://visibleearth.nasa.gov/images/57747/blue-marble-clouds) are here, but they don't cover the poles and the texture doesn't properly wrap around - there is an ugly artifact where the left side meets the right.
 
-NASA usually distributes the big texture with segments stored in different files (e.g., A1, B1, C1, D1, A2, B2, etc.). To assemble a full-resolution TIFF from NASA's cropped image segments you can use tools like [ImageMagick](https://imagemagick.org/) or preferably [gdal\_merge.py](https://gdal.org/). To my experience, ImageMagick can choke on the really big files, I had more luck using gdal_merge:
+NASA usually distributes the big texture with segments stored in different files (e.g., A1, B1, C1, D1, A2, B2, etc.). To assemble a full-resolution TIFF from NASA's cropped image segments you can use [gdal\_merge.py](https://gdal.org/) and
+the supplied merge_tiles.go:
 
 ```bash
-gdal_merge.py -o full_earth_tiled.tif \
+
+go run cmd/merge_tiles.go 4x2 assets/merged.png A1.png B1.png C1.png D1.png A2.png B2.png C2.png D2.png
+
+gdal_merge.py -o assets/merged.tif \
   -co TILED=YES \
   -co BLOCKXSIZE=256 \
   -co BLOCKYSIZE=256 \
   -co COMPRESS=DEFLATE \
-  A1.png B1.png C1.png D1.png \
-  A2.png B2.png C2.png D2.png
+  assets/merged.png
 ```
 
 Note that lazy loading is not supported for every possible TIFF format, but this configuration is known to work. These files can then be used directly in the `-day`, `-night`, or `-clouds` options. 

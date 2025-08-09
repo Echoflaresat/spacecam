@@ -183,16 +183,16 @@ func RenderScene(
 	theme Theme,
 ) (*image.NRGBA, error) {
 
-	texDay, err := loadTexture(theme.Day)
+	texDay, err := LoadTexture(theme.Day)
 	if err != nil {
 		return nil, err
 	}
-	texNight, err := loadTexture(theme.Night)
+	texNight, err := LoadTexture(theme.Night)
 	if err != nil {
 		return nil, err
 	}
 	// Using day for clouds here, like your Python stub.
-	texClouds, err := loadTexture(theme.Clouds)
+	texClouds, err := LoadTexture(theme.Clouds)
 	if err != nil {
 		return nil, err
 	}

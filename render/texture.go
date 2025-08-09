@@ -20,9 +20,19 @@ type Texture struct {
 	file   *os.File
 }
 
+func LoadImage(f *os.File) (image.Image, error) {
+	img, err := tiff.Decode(f)
+
+	// fallback to image codecs
+	if err != nil {
+		img, _, err = image.Decode(f)
+	}
+	return img, err
+}
+
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
-func loadTexture(path string) (Texture, error) {
+func LoadTexture(path string) (Texture, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return Texture{}, err
