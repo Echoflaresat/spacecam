@@ -6,9 +6,11 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/echoflaresat/spacecam/earth"
 	"github.com/echoflaresat/spacecam/render"
 )
 
@@ -42,7 +44,7 @@ func TestViews(t *testing.T) {
 		name string
 		lat  float64
 		lon  float64
-		dist float64
+		alt  float64
 	}{
 		{"60", 0, -60, 8800},
 		{"night", 0, 180, 8800},
@@ -56,7 +58,19 @@ func TestViews(t *testing.T) {
 				t,
 				filepath.Join(outDir, c.name+".png"),
 				func() (image.Image, error) {
-					return renderImage(c.lat, c.lon, c.dist, fov, tilt, yaw, size, supersample, renderTime, theme)
+
+					numWorkers := runtime.GOMAXPROCS(0)
+					sunDir := earth.SunDirectionECEF(renderTime)
+					camera := render.NewCamera(c.lat, c.lon, c.alt, fov, tilt, yaw)
+
+					return render.RenderScene(
+						camera,
+						sunDir,
+						size,
+						supersample,
+						theme,
+						numWorkers,
+					)
 				},
 			)
 		})

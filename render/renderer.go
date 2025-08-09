@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"runtime"
 
 	"github.com/echoflaresat/spacecam/colors"
 	"github.com/echoflaresat/spacecam/earth"
@@ -195,6 +194,7 @@ func RenderScene(
 	outSize int,
 	supersampling int,
 	theme Theme,
+	numWorkers int,
 ) (*image.NRGBA, error) {
 
 	texDay, err := LoadTexture(theme.Day)
@@ -213,8 +213,39 @@ func RenderScene(
 
 	origin := camera.Position
 
-	// Produce an RGB buffer (H*W*3)
-	img := RaytraceScenePixels(origin, sunDir, theme, texDay, texNight, texClouds, camera, outSize, supersampling, -1)
+	ar := 1.0 // keep 9.0/16.0 if you switch aspect later
+	W, H := outSize, int(float64(outSize)*ar)
+	offsets := GenerateSupersamplingOffsets(supersampling)
+
+	img := image.NewNRGBA(image.Rect(0, 0, W, H))
+	jobs := make(chan pixelJob, 1024)
+	results := make(chan pixelResult, 1024)
+
+	g := errgroup.Group{}
+
+	// feeder (closes jobs)
+	g.Go(func() error {
+		return runFeeder(W, H, jobs)
+	})
+
+	for i := 0; i < numWorkers; i++ {
+		g.Go(func() error {
+			return runWorker(
+				origin, sunDir, theme, texDay, texNight, texClouds,
+				camera, W, H, ar, offsets,
+				jobs, results)
+		})
+	}
+
+	// writer (exits when results is closed)
+	g.Go(func() error {
+		return runWriter(img, results, W, H)
+	})
+
+	if err := g.Wait(); err != nil {
+		fmt.Printf("render aborted: %v\n", err)
+		return img, nil
+	}
 	println("done")
 	return img, nil
 }
@@ -398,59 +429,6 @@ func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {
 
 	return visibleFraction
 }
-
-func RaytraceScenePixels(
-	origin vectors.Vec3,
-	sunDir vectors.Vec3,
-	theme Theme,
-	texDay Texture,
-	texNight Texture,
-	texClouds Texture,
-	camera Camera,
-	outSize,
-	supersampling,
-	numWorkers int,
-) *image.NRGBA {
-	if numWorkers <= 0 {
-		numWorkers = runtime.GOMAXPROCS(0)
-	}
-
-	ar := 1.0 // keep 9.0/16.0 if you switch aspect later
-	W, H := outSize, int(float64(outSize)*ar)
-	offsets := GenerateSupersamplingOffsets(supersampling)
-
-	img := image.NewNRGBA(image.Rect(0, 0, W, H))
-	jobs := make(chan pixelJob, 1024)
-	results := make(chan pixelResult, 1024)
-
-	g := errgroup.Group{}
-
-	// feeder (closes jobs)
-	g.Go(func() error {
-		return runFeeder(W, H, jobs)
-	})
-
-	for i := 0; i < numWorkers; i++ {
-		g.Go(func() error {
-			return runWorker(
-				origin, sunDir, theme, texDay, texNight, texClouds,
-				camera, W, H, ar, offsets,
-				jobs, results)
-		})
-	}
-
-	// writer (exits when results is closed)
-	g.Go(func() error {
-		return runWriter(img, results, W, H)
-	})
-
-	if err := g.Wait(); err != nil {
-		fmt.Printf("render aborted: %v\n", err)
-		return img
-	}
-	return img
-}
-
 func runFeeder(W, H int, jobs chan<- pixelJob) error {
 	defer close(jobs)
 	for y := 0; y < H; y++ {

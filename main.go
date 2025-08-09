@@ -7,6 +7,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/echoflaresat/spacecam/colors"
@@ -27,13 +28,13 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", 20.0, "Camera longitude in degrees"),
-		alt:  flag.Float64("alt", 880.0, "Camera altitude in kilometers"),
+		lon:  flag.Float64("lon", -20.0, "Camera longitude in degrees"),
+		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
 		yaw:  flag.Float64("yaw", 0.0, "Camera yaw in degrees"),
-		tilt: flag.Float64("tilt", 40.0, "Camera tilt in degrees"),
+		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
-		size:        flag.Int("size", 640, "Output image size (width/height in pixels)"),
+		size:        flag.Int("size", 512, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
 		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
 
@@ -82,6 +83,7 @@ func main() {
 		printHelp()
 		return
 	}
+	print("Generating " + *cfg.out + " ")
 
 	renderTime := parseTimeOrExit(*cfg.timeStr)
 
@@ -95,8 +97,18 @@ func main() {
 		Clouds:   *cfg.clouds,
 	}
 
-	print("Generating " + *cfg.out + " ")
-	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw, *cfg.size, *cfg.supersample, renderTime, theme)
+	numWorkers := runtime.GOMAXPROCS(0)
+	sunDir := earth.SunDirectionECEF(renderTime)
+	camera := render.NewCamera(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw)
+
+	img, err := render.RenderScene(
+		camera,
+		sunDir,
+		*cfg.size,
+		*cfg.supersample,
+		theme,
+		numWorkers,
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,20 +127,6 @@ func parseTimeOrExit(timeStr string) time.Time {
 		log.Fatalf("Invalid time format: %v", err)
 	}
 	return t
-}
-
-// renderImage renders the Earth view and returns the image.
-func renderImage(lat, lon, alt, fov, tilt, yaw float64, size, supersample int, renderTime time.Time, theme render.Theme) (image.Image, error) {
-	sunDir := earth.SunDirectionECEF(renderTime)
-	camera := render.NewCamera(lat, lon, alt, fov, tilt, yaw)
-
-	return render.RenderScene(
-		camera,
-		sunDir,
-		size,
-		supersample,
-		theme,
-	)
 }
 
 func writePNG(path string, img image.Image) error {
