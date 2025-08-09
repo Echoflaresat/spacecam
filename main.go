@@ -7,7 +7,6 @@ import (
 	"image/png"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/echoflaresat/spacecam/colors"
@@ -160,6 +159,7 @@ func testViews(theme render.Theme) {
 		panic(fmt.Errorf("failed to create test_outputs: %w", err))
 	}
 
+	renderAndSave("tests/60.png", 0, -60, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
 	renderAndSave("tests/night.png", 0, 180, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
 	renderAndSave("tests/full.png", 0, 0, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
 	renderAndSave("tests/sunrise.png", 0, 240, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
@@ -178,50 +178,4 @@ func renderAndSave(output string, lat, lon, alt, fov, tilt, yaw float64, size, s
 		panic(fmt.Errorf("failed to write %s: %w", "earth_view.png", err))
 	}
 	fmt.Printf("Wrote %s\n", output)
-}
-
-// testMultiView renders 9 views from different longitudes
-func testMultiView(theme render.Theme) error {
-
-	size := 640
-	supersample := 3
-	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
-	const outDir = "frames"
-
-	// Clean + recreate output dir
-	if err := os.RemoveAll(outDir); err != nil {
-		return fmt.Errorf("failed to remove test_outputs: %w", err)
-	}
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return fmt.Errorf("failed to create test_outputs: %w", err)
-	}
-
-	for i := 1; i < 100; i++ {
-
-		lat := 0.0
-		lon := float64(200 + 40)
-		tilt := 0.0
-		alt := 8800.0
-		// lat := rand.Float64()*180 - 90
-		// lon := rand.Float64()*360 - 180
-		// tilt := rand.Float64()*90 - 45
-		yaw := 0.0
-		// alt := rand.Float64()*2000.0 + 1000.0
-
-		img, err := renderImage(lat, lon, alt, 60.0, tilt, yaw, size, supersample, renderTime, theme)
-		if err != nil {
-			return fmt.Errorf("render failed at view %d: %w", i, err)
-		}
-
-		outPath := filepath.Join(outDir, fmt.Sprintf("test_view_%02d.png", i))
-		if err := writePNG(outPath, img); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outPath, err)
-		}
-		if err := writePNG("earth_view.png", img); err != nil {
-			return fmt.Errorf("failed to write %s: %w", outPath, err)
-		}
-		fmt.Printf("Wrote %s\n", outPath)
-	}
-
-	return nil
 }
