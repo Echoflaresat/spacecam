@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/png"
 	"log"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,7 +34,7 @@ func defineFlags() config {
 		yaw:  flag.Float64("yaw", 0.0, "Camera yaw in degrees"),
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
-		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
+		size:        flag.Int("size", 640, "Output image size (width/height in pixels)"),
 		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
 		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
 
@@ -97,6 +96,8 @@ func main() {
 		Clouds:   *cfg.clouds,
 	}
 
+	testViews(theme)
+
 	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw, *cfg.size, *cfg.supersample, renderTime, theme)
 	if err != nil {
 		log.Fatal(err)
@@ -105,8 +106,6 @@ func main() {
 	if err := writePNG(*cfg.out, img); err != nil {
 		log.Fatalf("Failed to write PNG: %v", err)
 	}
-
-	// testMultiView(theme)
 
 }
 
@@ -144,13 +143,48 @@ func renderImage(lat, lon, alt, fov, tilt, yaw float64, size, supersample int, r
 	)
 }
 
+func testViews(theme render.Theme) {
+	fov := 60.0
+	tilt := 0.0
+	yaw := 0.0
+	size := 640
+	supersample := 3
+	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
+	const outDir = "tests"
+
+	// Clean + recreate output dir
+	if err := os.RemoveAll(outDir); err != nil {
+		panic(fmt.Errorf("failed to remove test_outputs: %w", err))
+	}
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		panic(fmt.Errorf("failed to create test_outputs: %w", err))
+	}
+
+	renderAndSave("tests/sunrise.png", 0, 240, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
+}
+
+func renderAndSave(output string, lat, lon, alt, fov, tilt, yaw float64, size, supersample int, renderTime time.Time, theme render.Theme) {
+	img, err := renderImage(lat, lon, alt, 60.0, tilt, yaw, size, supersample, renderTime, theme)
+	if err != nil {
+		panic(fmt.Errorf("render failed at view %w", err))
+	}
+
+	if err := writePNG(output, img); err != nil {
+		panic(fmt.Errorf("failed to write %s: %w", output, err))
+	}
+	if err := writePNG("earth_view.png", img); err != nil {
+		panic(fmt.Errorf("failed to write %s: %w", "earth_view.png", err))
+	}
+	fmt.Printf("Wrote %s\n", output)
+}
+
 // testMultiView renders 9 views from different longitudes
 func testMultiView(theme render.Theme) error {
 
 	size := 640
 	supersample := 3
 	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
-	const outDir = "test_outputs"
+	const outDir = "frames"
 
 	// Clean + recreate output dir
 	if err := os.RemoveAll(outDir); err != nil {
@@ -162,12 +196,17 @@ func testMultiView(theme render.Theme) error {
 
 	for i := 1; i < 100; i++ {
 
-		lat := rand.Float64()*180 - 90
-		lon := rand.Float64()*360 - 180
-		tilt := 40.0 + rand.Float64()*40 - 20
-		yaw := rand.Float64()*360 - 180
+		lat := 0.0
+		lon := float64(200 + 40)
+		tilt := 0.0
+		alt := 8800.0
+		// lat := rand.Float64()*180 - 90
+		// lon := rand.Float64()*360 - 180
+		// tilt := rand.Float64()*90 - 45
+		yaw := 0.0
+		// alt := rand.Float64()*2000.0 + 1000.0
 
-		img, err := renderImage(lat, lon, 880.0, 60.0, tilt, yaw, size, supersample, renderTime, theme)
+		img, err := renderImage(lat, lon, alt, 60.0, tilt, yaw, size, supersample, renderTime, theme)
 		if err != nil {
 			return fmt.Errorf("render failed at view %d: %w", i, err)
 		}

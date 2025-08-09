@@ -44,14 +44,6 @@ func NewCamera(latDeg, lonDeg, altKm, fovDeg, tiltDeg, yawDeg float64) Camera {
 	right = right.Normalize()
 	up := right.Cross(fwd).Normalize()
 
-	fwd, right, up = tiltCamera(fwd, right, up, 90)
-
-	if yawDeg != 0 {
-		fwd, right, up = yawCamera(fwd, right, up, yawDeg)
-	}
-
-	fwd, right, up = tiltCamera(fwd, right, up, -90)
-
 	if tiltDeg != 0 {
 		fwd, right, up = tiltCamera(fwd, right, up, tiltDeg)
 	}
