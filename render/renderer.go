@@ -183,7 +183,6 @@ func RenderScene(
 	theme Theme,
 ) (*image.NRGBA, error) {
 
-	println("loading")
 	texDay, err := loadTexture(theme.Day)
 	if err != nil {
 		return nil, err
@@ -210,7 +209,6 @@ func RenderScene(
 	)
 
 	// Produce an RGB buffer (H*W*3)
-	println("raytracescenepixels")
 	img := RaytraceScenePixels(ctx, camera, outSize, supersampling)
 	println("done")
 	return img, nil
@@ -409,7 +407,6 @@ func RaytraceScenePixels(ctx *RayContext, camera Camera, outSize, supersampling 
 
 	ctx.GlobalSunFraction = SunVisibleFraction(camera.Position, ctx.SunDir)
 
-	println(ctx.GlobalSunFraction)
 	for y := 0; y < H; y++ {
 		progress := (y * 100) / H
 		if progress >= progressMilestone {

@@ -33,7 +33,7 @@ go build -o earth-renderer main.go
 Example
 
 ```bash
-./earth-renderer   -lat 48.0   -lon 19.0   -alt 35786.0   -fov 25.0   -size 2048   -supersample 3   -time 2025-08-03T12:00:00Z   -out snapshot.png
+./earth-renderer -lat 48.0 -lon 19.0 -alt 35786.0 
 ```
 
 ## License

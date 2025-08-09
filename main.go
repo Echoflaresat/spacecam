@@ -95,6 +95,7 @@ func main() {
 		Clouds:   *cfg.clouds,
 	}
 
+	print("Generating " + *cfg.out + " ")
 	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw, *cfg.size, *cfg.supersample, renderTime, theme)
 	if err != nil {
 		log.Fatal(err)
