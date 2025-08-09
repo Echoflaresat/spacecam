@@ -160,6 +160,8 @@ func testViews(theme render.Theme) {
 		panic(fmt.Errorf("failed to create test_outputs: %w", err))
 	}
 
+	renderAndSave("tests/night.png", 0, 180, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
+	renderAndSave("tests/full.png", 0, 0, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
 	renderAndSave("tests/sunrise.png", 0, 240, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
 }
 

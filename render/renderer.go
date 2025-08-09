@@ -223,7 +223,7 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 		return base
 	}
 
-	viewDot := Clip(ctx.ViewDotNormal, 0, 1)
+	viewDot := ctx.ViewDotNormal
 	rimAmount := math.Pow(1.0-viewDot, 3.0) * 0.3
 	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
 
@@ -405,7 +405,7 @@ func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {
 	thetaS := math.Asin(sunRadius / sunDistance)
 
 	// Angular separation
-	cosAngle := camPos.Normalize().Dot(sunDir.Scale(-1).Normalize())
+	cosAngle := camPos.Normalize().Dot(sunDir.Scale(-1))
 	d := math.Acos(Clip(cosAngle, -1.0, 1.0)) // angle between Earth center and Sun center in radians
 
 	// Convert angular radii to linear radii on unit sphere
