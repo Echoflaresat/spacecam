@@ -1,6 +1,6 @@
 # Earth Renderer
 
-![earth_view.png](samples/night.png)
+![earth_view.png](earth_view.png)
 
 Earth Renderer is a Go-based command-line tool and library that **aims to generate realistic views of Earth** from orbital or high-altitude perspectives using real-time lighting, cloud, and texture maps.
 
