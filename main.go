@@ -95,8 +95,6 @@ func main() {
 		Clouds:   *cfg.clouds,
 	}
 
-	testViews(theme)
-
 	img, err := renderImage(*cfg.lat, *cfg.lon, *cfg.alt, *cfg.fov, *cfg.tilt, *cfg.yaw, *cfg.size, *cfg.supersample, renderTime, theme)
 	if err != nil {
 		log.Fatal(err)
@@ -105,7 +103,6 @@ func main() {
 	if err := writePNG(*cfg.out, img); err != nil {
 		log.Fatalf("Failed to write PNG: %v", err)
 	}
-
 }
 
 func parseTimeOrExit(timeStr string) time.Time {
@@ -117,15 +114,6 @@ func parseTimeOrExit(timeStr string) time.Time {
 		log.Fatalf("Invalid time format: %v", err)
 	}
 	return t
-}
-
-func writePNG(path string, img image.Image) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(f, img)
 }
 
 // renderImage renders the Earth view and returns the image.
@@ -142,40 +130,11 @@ func renderImage(lat, lon, alt, fov, tilt, yaw float64, size, supersample int, r
 	)
 }
 
-func testViews(theme render.Theme) {
-	fov := 60.0
-	tilt := 0.0
-	yaw := 0.0
-	size := 640
-	supersample := 3
-	renderTime, _ := time.Parse(time.RFC3339, "2024-08-08T09:23:00Z")
-	const outDir = "tests"
-
-	// Clean + recreate output dir
-	if err := os.RemoveAll(outDir); err != nil {
-		panic(fmt.Errorf("failed to remove test_outputs: %w", err))
-	}
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		panic(fmt.Errorf("failed to create test_outputs: %w", err))
-	}
-
-	renderAndSave("tests/60.png", 0, -60, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
-	renderAndSave("tests/night.png", 0, 180, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
-	renderAndSave("tests/full.png", 0, 0, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
-	renderAndSave("tests/sunrise.png", 0, 240, 8800, fov, tilt, yaw, size, supersample, renderTime, theme)
-}
-
-func renderAndSave(output string, lat, lon, alt, fov, tilt, yaw float64, size, supersample int, renderTime time.Time, theme render.Theme) {
-	img, err := renderImage(lat, lon, alt, 60.0, tilt, yaw, size, supersample, renderTime, theme)
+func writePNG(path string, img image.Image) error {
+	f, err := os.Create(path)
 	if err != nil {
-		panic(fmt.Errorf("render failed at view %w", err))
+		return err
 	}
-
-	if err := writePNG(output, img); err != nil {
-		panic(fmt.Errorf("failed to write %s: %w", output, err))
-	}
-	if err := writePNG("earth_view.png", img); err != nil {
-		panic(fmt.Errorf("failed to write %s: %w", "earth_view.png", err))
-	}
-	fmt.Printf("Wrote %s\n", output)
+	defer f.Close()
+	return (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(f, img)
 }

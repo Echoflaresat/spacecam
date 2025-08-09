@@ -10,6 +10,11 @@ import (
 	"github.com/echoflaresat/spacecam/vectors"
 )
 
+var DayRim = colors.New(0.25, 0.60, 1.00, 1.0)
+var NightRim = colors.New(0.05, 0.07, 0.20, 0.5)
+var OuterRim = colors.New(0.6, 0.9, 1.2, 1.0)
+var Warm = colors.New(1.02, 1.0, 0.98, 1.0)
+
 type Theme struct {
 	DayRim   colors.Color4
 	NightRim colors.Color4

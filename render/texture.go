@@ -23,13 +23,14 @@ type Texture struct {
 // NewTexture constructs a Texture from a raw uint8 slice (H × W × 3).
 // Data must be laid out row-major, tightly packed.
 func loadTexture(path string) (Texture, error) {
-	// fallback to image codecs
 	f, err := os.Open(path)
 	if err != nil {
 		return Texture{}, err
 	}
 
 	img, err := tiff.Decode(f)
+
+	// fallback to image codecs
 	if err != nil {
 		img, _, err = image.Decode(f)
 	}
