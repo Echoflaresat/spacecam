@@ -76,6 +76,21 @@ func BlendNightDay(ctx *RayContext, CDay, CNight colors.Color4, light float64) c
 	return colors.Color4{R: r, G: g, B: b, A: 1.0}
 }
 
+// Compute how much sunlight is hitting the surface (soft transition)
+func getLightIntensity(extendedSurfaceNormal, sunDir vectors.Vec3) float64 {
+	sunLightIntensity := extendedSurfaceNormal.Dot(sunDir)
+	light := Smoothstep(-0.25, 0.05, sunLightIntensity)
+	width := 0.2
+	if sunLightIntensity < width/2 {
+		// this is supposed to fade out light as it goes
+		// into the shadow
+		// width -> -width
+		// width -> 0
+		light *= Clip((sunLightIntensity+width/2)/width, 0, 1)
+	}
+	return light
+}
+
 // RenderEarthSurface renders the visible surface color at the intersection point.
 // It blends day/night textures, clouds, specular, glow, and rim lighting.
 func RenderEarthSurface(ctx *RayContext) colors.Color4 {
@@ -84,9 +99,7 @@ func RenderEarthSurface(ctx *RayContext) colors.Color4 {
 	CNight := ctx.TexNight.Sample(ctx.HitPoint)
 	CClouds := ctx.TexClouds.Sample(ctx.HitPoint)
 
-	// Compute how much sunlight is hitting the surface (soft transition)
-	sunLightIntensity := ctx.SurfaceNormal.Dot(ctx.SunDir)
-	light := Smoothstep(-0.25, 0.05, sunLightIntensity)
+	light := getLightIntensity(ctx.SurfaceNormal, ctx.SunDir)
 
 	// 1. Blend day and night
 	CBlended := BlendNightDay(ctx, CDay, CNight, light)
@@ -137,8 +150,8 @@ func ApplySpecularHighlight(ctx *RayContext, Crgb, Cday colors.Color4) colors.Co
 	normalView := Clip(N.Dot(view), 0.0, 1.0)
 	grazingFalloff := math.Pow(normalView, 3.0)
 
-	exponent := 400.0 // Much sharper highlight
-	strength := 1.0   // Can tweak this if it's too much
+	exponent := 40.0 // Much sharper highlight
+	strength := 0.5  // Can tweak this if it's too much
 
 	specular := math.Pow(specAngle, exponent) * grazingFalloff * strength
 	specular = Clip(specular, 0.0, 1.0)
@@ -306,17 +319,15 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	if !ctx.HitEarth {
 		litAmount = litAmount * 0.5
-	}
+		litAmount *= getLightIntensity(midPoint.Normalize(), ctx.SunDir)
+	} else {
+		litAmount *= getLightIntensity(ctx.SurfaceNormal, ctx.SunDir)
 
-	viewToSun := ctx.SunDir.Dot(ctx.RayDir) // [-1, 1]
-	sunAngle := (1.0 - viewToSun) * 0.5     // 0 near sun, 1 opposite
-
-	if !ctx.HitEarth && sunAngle > 0.5 {
-		// this is supposed to fade out the atmosphere as it goes into the shadow
-		litAmount *= Smoothstep(0.54, 0.5, sunAngle)
 	}
 
 	// Hue shift: warm when near sun, cool away
+	viewToSun := ctx.SunDir.Dot(ctx.RayDir) // [-1, 1]
+	sunAngle := (1.0 - viewToSun) * 0.5     // 0 near sun, 1 opposite
 	skyColor := colors.New(
 		Lerp(1.0, ctx.theme.DayRim.R, sunAngle), // R: white → neutral warm
 		Lerp(1.0, ctx.theme.DayRim.G, sunAngle), // G: white → slightly greenish

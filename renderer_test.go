@@ -110,7 +110,7 @@ func runGoldenImageTest(t *testing.T, expectedPath string, renderFunc func() (im
 
 	// Compare
 	if !imagesEqual(expectedImg, img) {
-		newPath := expectedPath + ".new.png"
+		newPath := expectedPath
 		if err := writePNG(newPath, img); err != nil {
 			t.Fatalf("failed to write new differing image: %v", err)
 		}

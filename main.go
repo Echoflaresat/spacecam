@@ -28,7 +28,7 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", -20.0, "Camera longitude in degrees"),
+		lon:  flag.Float64("lon", -100.0, "Camera longitude in degrees"),
 		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
 		yaw:  flag.Float64("yaw", 0.0, "Camera yaw in degrees"),
@@ -40,9 +40,9 @@ func defineFlags() config {
 
 		out: flag.String("out", "earth_view.png", "Output PNG file path"),
 
-		day:    flag.String("day", "assets/world.200408.tif", "Day texture path"),
-		night:  flag.String("night", "assets/night.tif", "Night texture path"),
-		clouds: flag.String("clouds", "assets/cloud.2001210.tif", "Clouds texture path"),
+		day:    flag.String("day", "assets/world.200408.jpg", "Day texture path"),
+		night:  flag.String("night", "assets/night.jpg", "Night texture path"),
+		clouds: flag.String("clouds", "assets/cloud.2001210.jpg", "Clouds texture path"),
 
 		showHelp: flag.Bool("h", false, "Show this help message"),
 	}
