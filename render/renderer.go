@@ -25,13 +25,11 @@ type pixelResult struct {
 
 var DayRim = colors.New(0.25, 0.60, 1.00, 1.0)
 var NightRim = colors.New(0.05, 0.07, 0.20, 0.5)
-var OuterRim = colors.New(0.6, 0.9, 1.2, 1.0)
 var Warm = colors.New(1.02, 1.0, 0.98, 1.0)
 
 type Theme struct {
-	DayRim   colors.Color4
-	NightRim colors.Color4
-	OuterRim colors.Color4
+	DaySky   colors.Color4
+	NightSky colors.Color4
 	Warm     colors.Color4
 	Day      string
 	Night    string
@@ -268,18 +266,13 @@ func RenderScene(
 // ApplyAtmosphereOverlay simulates atmospheric scattering along the view ray using ray tracing.
 // It accounts for Rayleigh scattering, Earth's shadow, backlighting, and rays passing through thin air.
 func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
-	const H = 55.0
-	const rayleighStrength = 0.2
+	const H = 100.0
+	const rayleighStrength = 0.08
 
 	if !ctx.HitsAtmosphere {
 		return base
 	}
 
-	viewDot := ctx.ViewDotNormal
-	rimAmount := math.Pow(1.0-viewDot, 3.0) * 0.3
-	rimColor := ctx.theme.DayRim.Mix(ctx.theme.OuterRim, rimAmount)
-
-	// Step 3: Shadow intersection
 	hitShadow, tShadowEntry, tShadowExit := intersectHalfCylinderForward(ctx.Origin, ctx.RayDir, ctx.SunDir.Scale(-1), earth.Radius)
 
 	litLen := ctx.AtmosphereExitT - ctx.AtmosphereEntryT
@@ -305,7 +298,7 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	}
 
 	if litLen <= 0 && unlitLen <= 0 {
-		return base.Add(rimColor)
+		return base
 	}
 
 	tMid := (ctx.AtmosphereExitT + ctx.AtmosphereEntryT) * 0.5
@@ -318,27 +311,24 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 	litAmount = Clip(litAmount, 0.0, 1.0)
 
 	if !ctx.HitEarth {
-		litAmount = litAmount * 0.5
 		litAmount *= getLightIntensity(midPoint.Normalize(), ctx.SunDir)
 	} else {
 		litAmount *= getLightIntensity(ctx.SurfaceNormal, ctx.SunDir)
-
 	}
 
 	// Hue shift: warm when near sun, cool away
 	viewToSun := ctx.SunDir.Dot(ctx.RayDir) // [-1, 1]
 	sunAngle := (1.0 - viewToSun) * 0.5     // 0 near sun, 1 opposite
 	skyColor := colors.New(
-		Lerp(1.0, ctx.theme.DayRim.R, sunAngle), // R: white → neutral warm
-		Lerp(1.0, ctx.theme.DayRim.G, sunAngle), // G: white → slightly greenish
-		Lerp(1.0, ctx.theme.DayRim.B, sunAngle), // B: white → blueish
-		ctx.theme.DayRim.A,
+		Lerp(1.0, ctx.theme.DaySky.R, sunAngle), // R: white → neutral warm
+		Lerp(1.0, ctx.theme.DaySky.G, sunAngle), // G: white → slightly greenish
+		Lerp(1.0, ctx.theme.DaySky.B, sunAngle), // B: white → blueish
+		ctx.theme.DaySky.A,
 	)
 
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
-	tint := skyColor.Mix(ctx.theme.NightRim, wNight)
-	out := base.Mix(tint, litAmount)
-
+	tint := skyColor.MixAlpha(ctx.theme.NightSky, wNight)
+	out := base.Add(tint.Scale(litAmount))
 	return out
 
 }

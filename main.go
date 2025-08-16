@@ -28,7 +28,7 @@ type config struct {
 func defineFlags() config {
 	return config{
 		lat:  flag.Float64("lat", 0.0, "Camera latitude in degrees"),
-		lon:  flag.Float64("lon", -100.0, "Camera longitude in degrees"),
+		lon:  flag.Float64("lon", 0.0, "Camera longitude in degrees"),
 		alt:  flag.Float64("alt", 8880.0, "Camera altitude in kilometers"),
 		fov:  flag.Float64("fov", 60.0, "Camera field of view in degrees"),
 		yaw:  flag.Float64("yaw", 0.0, "Camera yaw in degrees"),
@@ -88,9 +88,8 @@ func main() {
 	renderTime := parseTimeOrExit(*cfg.timeStr)
 
 	theme := render.Theme{
-		DayRim:   colors.New(0.25, 0.60, 1.00, 1.0),
-		NightRim: colors.New(0.05, 0.07, 0.20, 0.5),
-		OuterRim: colors.New(0.6, 0.9, 1.2, 1.0),
+		DaySky:   colors.New(0.25, 0.60, 1.00, 0.5),
+		NightSky: colors.New(0.15, 0.07, 0.20, 0.5),
 		Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
 		Day:      *cfg.day,
 		Night:    *cfg.night,

@@ -16,9 +16,8 @@ import (
 
 func TestViews(t *testing.T) {
 	theme := render.Theme{
-		DayRim:   render.DayRim,
-		NightRim: render.NightRim,
-		OuterRim: render.OuterRim,
+		DaySky:   render.DayRim,
+		NightSky: render.NightRim,
 		Warm:     render.Warm,
 		Day:      "assets/world.200408.jpg",
 		Night:    "assets/night.jpg",
