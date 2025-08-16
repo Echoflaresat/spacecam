@@ -77,16 +77,15 @@ func BlendNightDay(ctx *RayContext, CDay, CNight colors.Color4, light float64) c
 // Compute how much sunlight is hitting the surface (soft transition)
 func getLightIntensity(extendedSurfaceNormal, sunDir vectors.Vec3) float64 {
 	sunLightIntensity := extendedSurfaceNormal.Dot(sunDir)
-	light := Smoothstep(-0.25, 0.05, sunLightIntensity)
-	width := 0.2
-	if sunLightIntensity < width/2 {
-		// this is supposed to fade out light as it goes
-		// into the shadow
-		// width -> -width
-		// width -> 0
-		light *= Clip((sunLightIntensity+width/2)/width, 0, 1)
-	}
-	return light
+	// width := 0.2
+	// if math.Abs(sunLightIntensity) < width/2 {
+	// 	// this is supposed to fade out light as it goes
+	// 	// into the shadow
+	// 	return Clip((sunLightIntensity+width/2)/width, 0, 1)
+	// }
+
+	// return sunLightIntensity
+	return Clip(sunLightIntensity, 0, 1)
 }
 
 // RenderEarthSurface renders the visible surface color at the intersection point.
@@ -266,8 +265,8 @@ func RenderScene(
 // ApplyAtmosphereOverlay simulates atmospheric scattering along the view ray using ray tracing.
 // It accounts for Rayleigh scattering, Earth's shadow, backlighting, and rays passing through thin air.
 func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
-	const H = 100.0
-	const rayleighStrength = 0.08
+	const H = 80.0
+	const rayleighStrength = 0.3
 
 	if !ctx.HitsAtmosphere {
 		return base
@@ -275,7 +274,8 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	hitShadow, tShadowEntry, tShadowExit := intersectHalfCylinderForward(ctx.Origin, ctx.RayDir, ctx.SunDir.Scale(-1), earth.Radius)
 
-	litLen := ctx.AtmosphereExitT - ctx.AtmosphereEntryT
+	pathInAtmosphere := ctx.AtmosphereExitT - ctx.AtmosphereEntryT
+	litLen := pathInAtmosphere
 	unlitLen := 0.0
 	if hitShadow {
 		shadowStart := math.Max(ctx.AtmosphereEntryT, tShadowEntry)
@@ -283,17 +283,8 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 		if shadowEnd > shadowStart {
 			shadowLen := shadowEnd - shadowStart
-
-			if litLen > shadowLen && !ctx.HitEarth {
-				// skip the area that is pure air but partially affected by shadow
-				// without this we have an ugly V shape where the atmosphere fades into darkness
-				// with darkess bitween the surface of the planet and the lit upper region
-				// alphaCorr = math.Exp(-shadowLen)
-
-			} else {
-				litLen -= shadowLen
-				unlitLen += shadowLen
-			}
+			litLen -= shadowLen
+			unlitLen += shadowLen
 		}
 	}
 
@@ -301,20 +292,26 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 		return base
 	}
 
-	tMid := (ctx.AtmosphereExitT + ctx.AtmosphereEntryT) * 0.5
+	tMid := (ctx.AtmosphereEntryT + ctx.AtmosphereExitT) * 0.5
+
+	lightIntensity := 1.0
 	midPoint := ctx.Origin.Add(ctx.RayDir.Scale(tMid))
 	avgHeight := midPoint.Norm() - earth.Radius
+	entryNormal := ctx.Origin.Add(ctx.RayDir.Scale(ctx.AtmosphereEntryT)).Normalize()
+	litAmount := math.Log(litLen)
+
+	lightIntensity = getLightIntensity(entryNormal, ctx.SunDir)
+	if !ctx.HitEarth {
+		// sun can lit from the back of the planet
+		exitNormal := ctx.Origin.Add(ctx.RayDir.Scale(ctx.AtmosphereExitT)).Normalize()
+		l2 := getLightIntensity(exitNormal, ctx.SunDir)
+		lightIntensity = math.Max(lightIntensity, l2)
+	}
+
 	avgDensity := math.Exp(-avgHeight / H)
 
-	// Light amount modulated by density
-	litAmount := math.Log(litLen+unlitLen) * avgDensity * rayleighStrength
-	litAmount = Clip(litAmount, 0.0, 1.0)
-
-	if !ctx.HitEarth {
-		litAmount *= getLightIntensity(midPoint.Normalize(), ctx.SunDir)
-	} else {
-		litAmount *= getLightIntensity(ctx.SurfaceNormal, ctx.SunDir)
-	}
+	litAmount *= (0.1 + lightIntensity) * avgDensity * rayleighStrength
+	litAmount = Clip(litAmount, 0, 1)
 
 	// Hue shift: warm when near sun, cool away
 	viewToSun := ctx.SunDir.Dot(ctx.RayDir) // [-1, 1]
@@ -328,9 +325,22 @@ func ApplyAtmosphereOverlay(ctx *RayContext, base colors.Color4) colors.Color4 {
 
 	wNight := unlitLen / (litLen + unlitLen + 1e-5)
 	tint := skyColor.MixAlpha(ctx.theme.NightSky, wNight)
-	out := base.Add(tint.Scale(litAmount))
+	out := base.MixAlpha(tint, litAmount)
 	return out
 
+}
+
+func ClosestPointOnRayToOrigin(origin, dir vectors.Vec3) vectors.Vec3 {
+	den := dir.Dot(dir)
+	if den == 0 {
+		// direction is zero vector -> ray is just a point
+		return origin
+	}
+	t := -origin.Dot(dir) / den
+	if t < 0 {
+		return origin
+	}
+	return origin.Add(dir.Scale(t))
 }
 
 func Lerp(a, b, t float64) float64 {
@@ -389,7 +399,7 @@ func RenderSunDisk(ctx *RayContext, base colors.Color4) colors.Color4 {
 	sunIntensity := math.Pow(t, 2.0)
 
 	// Blend the glow onto the base
-	return base.Mix(sunColor, sunIntensity)
+	return base.MixAlpha(sunColor, sunIntensity)
 }
 
 func SunVisibleFraction(camPos, sunDir vectors.Vec3) float64 {

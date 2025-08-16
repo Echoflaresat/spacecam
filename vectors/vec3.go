@@ -65,3 +65,7 @@ func (v Vec3) Orthogonal() Vec3 {
 	// otherwise, cross with Y axis
 	return v.Cross(Vec3{0, 1, 0}).Normalize()
 }
+
+func Distance(v1, v2 Vec3) float64 {
+	return v1.Sub(v2).Norm()
+}

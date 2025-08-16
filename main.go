@@ -38,7 +38,7 @@ func defineFlags() config {
 		tilt: flag.Float64("tilt", 0.0, "Camera tilt in degrees"),
 
 		size:        flag.Int("size", 1024, "Output image size (width/height in pixels)"),
-		supersample: flag.Int("supersample", 3, "Supersampling factor (higher is slower but smoother)"),
+		supersample: flag.Int("supersample", 1, "Supersampling factor (higher is slower but smoother)"),
 		timeStr:     flag.String("time", "", "Time in RFC3339 format (e.g., 2025-08-02T15:04:05Z); defaults to now"),
 
 		out: flag.String("out", "earth_view.png", "Output PNG file path"),
@@ -93,7 +93,7 @@ func main() {
 
 	theme := render.Theme{
 		DaySky:   colors.New(0.25, 0.60, 1.00, 0.5),
-		NightSky: colors.New(0.15, 0.07, 0.20, 0.5),
+		NightSky: colors.New(0.043, 0.047, 0.063, 0.5),
 		Warm:     colors.New(1.02, 1.0, 0.98, 1.0),
 		Day:      *cfg.day,
 		Night:    *cfg.night,
